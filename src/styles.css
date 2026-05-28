@@ -1,0 +1,259 @@
+:root {
+  --bg: #f9f8f4;
+  --surface: #efeee9;
+  --surface-elevated: #ffffff;
+  --text: #2c2c2a;
+  --text-muted: #5f5e5a;
+  --grid: #807f78;
+  --border: rgba(0, 0, 0, 0.12);
+  --accent: #534ab7;
+  --c1: #534ab7;
+  --c2: #0f6e56;
+  --c3: #854f0b;
+  --c4: #5f5e5a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161513;
+    --surface: #1e1d1a;
+    --surface-elevated: #262522;
+    --text: #c2c0b6;
+    --text-muted: #9c9a92;
+    --grid: #6e6d65;
+    --border: rgba(255, 255, 255, 0.12);
+    --accent: #afa9ec;
+    --c1: #afa9ec;
+    --c2: #5dcaa5;
+    --c3: #ef9f27;
+    --c4: #b4b2a9;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  align-items: stretch;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+#stage {
+  background: var(--surface);
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+
+#stage canvas {
+  display: block;
+  height: 100%;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+}
+
+#stage.mode-pan,
+#stage.mode-edit,
+#stage.mode-move {
+  cursor: grab;
+}
+
+#stage.mode-edit.near-snap {
+  cursor: text;
+}
+
+#stage.dragging {
+  cursor: grabbing !important;
+}
+
+#stage.item-drag {
+  cursor: move !important;
+}
+
+#stage.mode-pan .item:not(.editing) {
+  cursor: pointer;
+}
+
+#stage.mode-edit .item:not(.editing) {
+  cursor: text;
+}
+
+#stage.mode-move .item:not(.editing) {
+  cursor: move;
+}
+
+.item {
+  font-size: 16px;
+  font-weight: 500;
+  left: 0;
+  position: absolute;
+  top: 0;
+  transform-origin: center center;
+  user-select: none;
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
+
+.item.c1 {
+  color: var(--c1);
+}
+
+.item.c2 {
+  color: var(--c2);
+}
+
+.item.c3 {
+  color: var(--c3);
+}
+
+.item.c4 {
+  color: var(--c4);
+}
+
+#stage:not(.dragging):not(.item-drag) .item:not(.as-dot):not(.as-pill-h):not(.as-pill-v):hover {
+  text-decoration: underline;
+}
+
+.item.as-dot {
+  background: currentColor;
+  border-radius: 50%;
+  font-size: 0;
+  height: 6px;
+  line-height: 0;
+  outline: none !important;
+  padding: 0 !important;
+  width: 6px;
+}
+
+.item.as-pill-h,
+.item.as-pill-v {
+  background: currentColor;
+  border-radius: 99px;
+  font-size: 0;
+  line-height: 0;
+  outline: none !important;
+  padding: 0 !important;
+}
+
+.item.as-pill-h {
+  height: 3px;
+  width: 16px;
+}
+
+.item.as-pill-v {
+  height: 16px;
+  width: 3px;
+}
+
+.item.editing {
+  background: var(--surface-elevated);
+  border-radius: 8px;
+  cursor: text;
+  font-size: 16px !important;
+  height: auto !important;
+  line-height: normal !important;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 4px;
+  padding: 8px 16px;
+  text-decoration: none !important;
+  user-select: text;
+  width: auto !important;
+  z-index: 10;
+}
+
+.mode-buttons {
+  background: var(--surface-elevated);
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 4px;
+  left: 16px;
+  padding: 4px;
+  position: absolute;
+  top: 16px;
+  z-index: 5;
+}
+
+.mode-buttons button {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 5px 12px;
+}
+
+.mode-buttons button:hover {
+  color: var(--text);
+}
+
+.mode-buttons button.active {
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  color: var(--text);
+}
+
+.zoom-control {
+  align-items: center;
+  background: var(--surface-elevated);
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  bottom: 16px;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+  padding: 6px 14px;
+  position: absolute;
+  right: 16px;
+  z-index: 5;
+}
+
+.zoom-control input[type="range"] {
+  accent-color: var(--accent);
+  width: 120px;
+}
+
+.zoom-control #zoom-val {
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  text-align: right;
+}
+
+.zoom-control button {
+  background: transparent;
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.4;
+  padding: 4px 10px;
+}
+
+.zoom-control button:hover {
+  background: var(--surface);
+}
+
+.zoom-control button:active {
+  transform: scale(0.98);
+}

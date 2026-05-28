@@ -1,0 +1,1 @@
+This is an infinite canvas note-taking application, but it is rendered on a non-Euclidean Poincaré hyperbolic disk. Therefore, a strong emphasis on non-Euclidean geometry knowledge is required.

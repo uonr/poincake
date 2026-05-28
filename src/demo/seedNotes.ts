@@ -1,5 +1,5 @@
 import { abs2 } from '../geometry/complex';
-import { gridIdToDiskPoint, type GridPoint } from '../grid/hyperbolicTiling';
+import type { GridPoint } from '../grid/hyperbolicTiling';
 import type { Note, NoteColor } from '../model/note';
 
 const WORDS = [
@@ -195,7 +195,7 @@ export const seedNotes = (
   const maxInitialRadius2 = options.maxInitialRadius
     ? options.maxInitialRadius * options.maxInitialRadius
     : Infinity;
-  const initialPoints = gridPoints.filter((p) => abs2(gridIdToDiskPoint(p.id)) <= maxInitialRadius2);
+  const initialPoints = gridPoints.filter((p) => abs2(p.point) <= maxInitialRadius2);
   const shuffled = [...(initialPoints.length > 0 ? initialPoints : gridPoints)];
 
   for (let i = shuffled.length - 1; i > 0; i -= 1) {
@@ -219,7 +219,7 @@ export const seedNotes = (
 
     notes.push({
       id: `note-${i}`,
-      position: point.id,
+      position: point.point,
       text: WORDS[Math.floor(random() * WORDS.length)] ?? 'Note',
       color: COLORS[Math.floor(random() * COLORS.length)] ?? 'c1',
       createdAt: now,

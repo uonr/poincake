@@ -1,7 +1,6 @@
 import { abs2 } from '../geometry/complex';
 import type { DiskPoint } from '../geometry/disk';
 import { applyTransform, type DiskTransform } from '../geometry/mobius';
-import { gridIdToDiskPoint } from '../grid/hyperbolicTiling';
 import type { Note } from '../model/note';
 import { projectDiskPoint, type Viewport } from './viewport';
 
@@ -62,7 +61,7 @@ export class NoteLayer {
         continue;
       }
 
-      const transformed = applyTransform(view, gridIdToDiskPoint(note.position));
+      const transformed = applyTransform(view, note.position);
       const radius2 = abs2(transformed);
       const scale = 1 - radius2;
       const projected = projectDiskPoint(clampForProjection(transformed), viewport);

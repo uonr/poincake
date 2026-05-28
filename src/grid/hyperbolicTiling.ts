@@ -30,6 +30,11 @@ export const gridIdToDiskPoint = (id: GridId): DiskPoint => [
   id.yi / GRID_PRECISION,
 ];
 
+export const diskPointToGridId = (point: DiskPoint): GridId => ({
+  xi: Math.round(point[0] * GRID_PRECISION),
+  yi: Math.round(point[1] * GRID_PRECISION),
+});
+
 const gridIdKey = (id: GridId): string => `${id.xi},${id.yi}`;
 
 export type HyperbolicTiling = Readonly<{

@@ -1,5 +1,5 @@
+import { abs2 } from '../geometry/complex';
 import { clampDisk, type DiskPoint } from '../geometry/disk';
-import { gridIdToDiskPoint, type GridId } from '../grid/hyperbolicTiling';
 import {
   applyTransform,
   identityTransform,
@@ -43,6 +43,7 @@ export class HyperbolicCanvasController {
   private nextNoteId: number;
   private flying = false;
   private rafId: number | null = null;
+  private home: DiskPoint = [0, 0];
 
   constructor(private readonly options: HyperbolicCanvasControllerOptions) {
     this.gridRenderer = new GridRenderer(options.canvas);
@@ -123,7 +124,7 @@ export class HyperbolicCanvasController {
       if (this.editingNoteId) {
         this.endEdit();
       }
-      this.flyTo([0, 0]);
+      this.flyTo(this.home);
     });
   }
 
@@ -225,6 +226,25 @@ export class HyperbolicCanvasController {
     const viewport = createViewport(this.options.stage, this.zoom);
     const z = clampDisk(screenToDisk(event.clientX, event.clientY, viewport));
     this.view = transformFromPointPair(this.dragStartPoint, z);
+    this.reanchorIfNeeded();
+  }
+
+  private reanchorIfNeeded(): void {
+    const viewCenter = applyTransform(invertTransform(this.view), [0, 0]);
+    if (abs2(viewCenter) < 0.49) {
+      return;
+    }
+
+    for (const note of this.notes) {
+      note.position = applyTransform(this.view, note.position);
+    }
+
+    if (this.dragStartPoint) {
+      this.dragStartPoint = applyTransform(this.view, this.dragStartPoint);
+    }
+
+    this.home = applyTransform(this.view, this.home);
+    this.view = identityTransform;
   }
 
   private dragItemToPointer(event: PointerEvent): void {
@@ -247,7 +267,7 @@ export class HyperbolicCanvasController {
     const note = this.notes.find((candidate) => candidate.id === this.dragNoteId);
 
     if (snappedGridPoint && note) {
-      note.position = snappedGridPoint.id;
+      note.position = snappedGridPoint.point;
       note.updatedAt = Date.now();
     }
   }
@@ -271,9 +291,9 @@ export class HyperbolicCanvasController {
           );
           if (snapped) {
             const existing = this.notes.find(
-              (n) => n.position.xi === snapped.id.xi && n.position.yi === snapped.id.yi,
+              (n) => diskPointsAlmostEqual(n.position, snapped.point),
             );
-            const target = existing ?? this.createNote(snapped.id);
+            const target = existing ?? this.createNote(snapped.point);
             this.startEdit(target);
             this.dragStartPoint = null;
             return;
@@ -289,7 +309,7 @@ export class HyperbolicCanvasController {
             this.dragNoteId = null;
             return;
           }
-          this.flyTo(gridIdToDiskPoint(note.position));
+          this.flyTo(note.position);
         }
       }
     }
@@ -303,7 +323,7 @@ export class HyperbolicCanvasController {
   private startEdit(note: Note): void {
     this.pointerMode = 'editing';
     this.editingNoteId = note.id;
-    this.flyTo(gridIdToDiskPoint(note.position), 380, () => {
+    this.flyTo(note.position, 380, () => {
       const element = this.noteLayer.getElement(note.id);
       if (!element) {
         return;
@@ -358,7 +378,7 @@ export class HyperbolicCanvasController {
     this.options.stage.classList.toggle('near-snap', near);
   }
 
-  private createNote(position: GridId): Note {
+  private createNote(position: DiskPoint): Note {
     const now = Date.now();
     const note: Note = {
       id: `note-${this.nextNoteId++}`,
@@ -394,6 +414,7 @@ export class HyperbolicCanvasController {
         requestAnimationFrame(step);
       } else {
         this.flying = false;
+        this.reanchorIfNeeded();
         this.render();
         onDone?.();
       }
@@ -424,3 +445,9 @@ export class HyperbolicCanvasController {
 
 const isInteractionMode = (value: string | undefined): value is InteractionMode =>
   value === 'pan' || value === 'edit' || value === 'move';
+
+const diskPointsAlmostEqual = (a: DiskPoint, b: DiskPoint): boolean => {
+  const dx = a[0] - b[0];
+  const dy = a[1] - b[1];
+  return dx * dx + dy * dy < 1e-18;
+};

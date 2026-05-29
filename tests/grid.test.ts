@@ -59,6 +59,39 @@ describe('hyperbolic tiling', () => {
     expect(snapped?.point[1]).toBeCloseTo(gridPoint.point[1], 10);
   });
 
+  it('keeps the same visible grid through reanchoring', () => {
+    const tiling = generateHyperbolicTiling({ maxRadius: 0.85, maxTiles: 160 });
+    const grid = new AnchoredGrid(tiling);
+    const view = transformFromPointPair([0.55, 0.15], [0, 0]);
+    const viewport: Viewport = {
+      width: 800,
+      height: 600,
+      left: 0,
+      top: 0,
+      cx: 400,
+      cy: 300,
+      radius: 500,
+      zoom: 1,
+    };
+    const original = tiling.coarseGridPoints.find((candidate) => abs2(candidate.point) < 0.35 * 0.35);
+
+    expect(original).toBeDefined();
+
+    if (!original) {
+      return;
+    }
+
+    const expected = applyTransform(view, original.point);
+    const projected = projectDiskPoint(expected, viewport);
+
+    grid.reanchor(view);
+
+    const snapped = grid.snapScreenPoint(projected.x, projected.y, identityTransform, viewport);
+
+    expect(snapped?.point[0]).toBeCloseTo(expected[0], 10);
+    expect(snapped?.point[1]).toBeCloseTo(expected[1], 10);
+  });
+
   it('snaps to coarse grid points', () => {
     const tiling = generateHyperbolicTiling({ maxRadius: 0.8, maxTiles: 120 });
     const grid = new AnchoredGrid(tiling);

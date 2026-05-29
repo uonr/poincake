@@ -9,6 +9,7 @@ import {
 } from '../geometry/mobius';
 import type { AnchoredGrid } from '../grid/anchoredGrid';
 import type { Note } from '../model/note';
+import { HyperbolicWorldState } from '../model/worldState';
 import { GridRenderer } from '../render/gridRenderer';
 import { NoteLayer } from '../render/noteLayer';
 import { createViewport, projectDiskPoint, screenToDisk } from '../render/viewport';
@@ -29,8 +30,7 @@ export type HyperbolicCanvasControllerOptions = Readonly<{
 export class HyperbolicCanvasController {
   private readonly gridRenderer: GridRenderer;
   private readonly noteLayer: NoteLayer;
-  private readonly notes: Note[];
-  private readonly grid: AnchoredGrid;
+  private readonly world: HyperbolicWorldState;
   private interactionMode: InteractionMode = 'pan';
   private zoom = 1;
   private view: DiskTransform = identityTransform;
@@ -43,18 +43,16 @@ export class HyperbolicCanvasController {
   private nextNoteId: number;
   private flying = false;
   private rafId: number | null = null;
-  private home: DiskPoint = [0, 0];
 
   constructor(private readonly options: HyperbolicCanvasControllerOptions) {
     this.gridRenderer = new GridRenderer(options.canvas);
     this.noteLayer = new NoteLayer(options.stage);
-    this.notes = options.notes;
-    this.grid = options.grid;
+    this.world = new HyperbolicWorldState(options.notes, options.grid);
     this.nextNoteId = options.notes.length;
   }
 
   start(): void {
-    this.noteLayer.sync(this.notes);
+    this.noteLayer.sync(this.world.notes);
     this.bindPointerEvents();
     this.bindControls();
     this.bindResize();
@@ -124,7 +122,7 @@ export class HyperbolicCanvasController {
       if (this.editingNoteId) {
         this.endEdit();
       }
-      this.flyTo(this.home);
+      this.flyTo(this.world.home);
     });
   }
 
@@ -235,15 +233,8 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    for (const note of this.notes) {
-      note.position = applyTransform(this.view, note.position);
-    }
-
-    if (this.dragStartPoint) {
-      this.dragStartPoint = applyTransform(this.view, this.dragStartPoint);
-    }
-
-    this.home = applyTransform(this.view, this.home);
+    const [dragStartPoint = null] = this.world.reanchor(this.view, [this.dragStartPoint]);
+    this.dragStartPoint = dragStartPoint;
     this.view = identityTransform;
   }
 
@@ -258,13 +249,13 @@ export class HyperbolicCanvasController {
     }
 
     const viewport = createViewport(this.options.stage, this.zoom);
-    const snappedGridPoint = this.grid.snapScreenPoint(
+    const snappedGridPoint = this.world.grid.snapScreenPoint(
       event.clientX,
       event.clientY,
       this.view,
       viewport,
     );
-    const note = this.notes.find((candidate) => candidate.id === this.dragNoteId);
+    const note = this.world.notes.find((candidate) => candidate.id === this.dragNoteId);
 
     if (snappedGridPoint && note) {
       note.position = snappedGridPoint.point;
@@ -283,14 +274,14 @@ export class HyperbolicCanvasController {
       if (this.pointerMode === 'pending-pan' && this.dragStartPoint) {
         if (this.interactionMode === 'edit' && this.downPosition) {
           const viewport = createViewport(this.options.stage, this.zoom);
-          const snapped = this.grid.snapScreenPoint(
+          const snapped = this.world.grid.snapScreenPoint(
             this.downPosition[0],
             this.downPosition[1],
             this.view,
             viewport,
           );
           if (snapped) {
-            const existing = this.notes.find(
+            const existing = this.world.notes.find(
               (n) => diskPointsAlmostEqual(n.position, snapped.point),
             );
             const target = existing ?? this.createNote(snapped.point);
@@ -301,7 +292,7 @@ export class HyperbolicCanvasController {
         }
         this.flyTo(this.dragStartPoint);
       } else if (this.pointerMode === 'pending-item' && this.dragNoteId) {
-        const note = this.notes.find((candidate) => candidate.id === this.dragNoteId);
+        const note = this.world.notes.find((candidate) => candidate.id === this.dragNoteId);
         if (note) {
           if (this.interactionMode === 'edit') {
             this.startEdit(note);
@@ -348,7 +339,7 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    const note = this.notes.find((candidate) => candidate.id === this.editingNoteId);
+    const note = this.world.notes.find((candidate) => candidate.id === this.editingNoteId);
     const element = this.noteLayer.getElement(this.editingNoteId);
     if (element && note) {
       const nextText = element.textContent?.trim() || '·';
@@ -367,7 +358,7 @@ export class HyperbolicCanvasController {
 
   private updateSnapCursor(clientX: number, clientY: number): void {
     const viewport = createViewport(this.options.stage, this.zoom);
-    const snapped = this.grid.snapScreenPoint(clientX, clientY, this.view, viewport);
+    const snapped = this.world.grid.snapScreenPoint(clientX, clientY, this.view, viewport);
     let near = false;
     if (snapped) {
       const projected = projectDiskPoint(applyTransform(this.view, snapped.point), viewport);
@@ -388,8 +379,8 @@ export class HyperbolicCanvasController {
       createdAt: now,
       updatedAt: now,
     };
-    this.notes.push(note);
-    this.noteLayer.sync(this.notes);
+    this.world.notes.push(note);
+    this.noteLayer.sync(this.world.notes);
     return note;
   }
 
@@ -438,8 +429,8 @@ export class HyperbolicCanvasController {
     const viewport = createViewport(this.options.stage, this.zoom);
     const gridColor = getComputedStyle(this.options.stage).getPropertyValue('--grid').trim() || '#888';
 
-    this.gridRenderer.draw(this.grid.tiling, this.view, viewport, gridColor);
-    this.noteLayer.render(this.notes, this.view, viewport, this.editingNoteId);
+    this.gridRenderer.draw(this.world.grid.tiling, this.view, viewport, gridColor);
+    this.noteLayer.render(this.world.notes, this.view, viewport, this.editingNoteId);
   }
 }
 

@@ -2,11 +2,19 @@ import { DISK_EDGE_EPSILON } from '../geometry/disk';
 import { applyTransform, invertTransform, type DiskTransform } from '../geometry/mobius';
 import type { Viewport } from '../render/viewport';
 import { nearestVisibleGridPoint } from './snap';
-import type { GridPoint, HyperbolicTiling } from './hyperbolicTiling';
+import { transformHyperbolicTiling, type GridPoint, type HyperbolicTiling } from './hyperbolicTiling';
 import { viewDiskWorldBounds } from './spatialIndex';
 
 export class AnchoredGrid {
-  constructor(readonly tiling: HyperbolicTiling) {}
+  constructor(private currentTiling: HyperbolicTiling) {}
+
+  get tiling(): HyperbolicTiling {
+    return this.currentTiling;
+  }
+
+  reanchor(transform: DiskTransform): void {
+    this.currentTiling = transformHyperbolicTiling(this.currentTiling, transform);
+  }
 
   snapScreenPoint(
     clientX: number,

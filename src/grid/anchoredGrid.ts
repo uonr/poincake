@@ -1,19 +1,39 @@
 import { DISK_EDGE_EPSILON } from '../geometry/disk';
-import { applyTransform, invertTransform, type DiskTransform } from '../geometry/mobius';
+import {
+  applyTransform,
+  composeTransforms,
+  identityTransform,
+  invertTransform,
+  type DiskTransform,
+} from '../geometry/mobius';
 import type { Viewport } from '../render/viewport';
 import { nearestVisibleGridPoint } from './snap';
-import { transformHyperbolicTiling, type GridPoint, type HyperbolicTiling } from './hyperbolicTiling';
+import type { GridPoint, HyperbolicTiling } from './hyperbolicTiling';
 import { viewDiskWorldBounds } from './spatialIndex';
 
-export class AnchoredGrid {
-  constructor(private currentTiling: HyperbolicTiling) {}
+export type AnchoredGridView = Readonly<{
+  points: readonly GridPoint[];
+  transform: DiskTransform;
+}>;
 
-  get tiling(): HyperbolicTiling {
-    return this.currentTiling;
-  }
+export class AnchoredGrid {
+  private gridToWorld: DiskTransform = identityTransform;
+
+  constructor(readonly tiling: HyperbolicTiling) {}
 
   reanchor(transform: DiskTransform): void {
-    this.currentTiling = transformHyperbolicTiling(this.currentTiling, transform);
+    this.gridToWorld = composeTransforms(transform, this.gridToWorld);
+  }
+
+  visiblePoints(view: DiskTransform, maxViewRadius: number): AnchoredGridView {
+    const gridView = composeTransforms(view, this.gridToWorld);
+    const viewCenter = applyTransform(invertTransform(gridView), [0, 0]);
+    const bounds = viewDiskWorldBounds(viewCenter, maxViewRadius);
+
+    return {
+      points: this.tiling.coarseGridIndex.queryDisk(bounds.center, bounds.radius),
+      transform: gridView,
+    };
   }
 
   snapScreenPoint(
@@ -22,9 +42,22 @@ export class AnchoredGrid {
     view: DiskTransform,
     viewport: Viewport,
   ): GridPoint | null {
-    const viewCenter = applyTransform(invertTransform(view), [0, 0]);
-    const bounds = viewDiskWorldBounds(viewCenter, Math.sqrt(DISK_EDGE_EPSILON));
-    const candidates = this.tiling.coarseGridIndex.queryDisk(bounds.center, bounds.radius);
-    return nearestVisibleGridPoint(clientX, clientY, candidates, view, viewport);
+    const visible = this.visiblePoints(view, Math.sqrt(DISK_EDGE_EPSILON));
+    const gridPoint = nearestVisibleGridPoint(
+      clientX,
+      clientY,
+      visible.points,
+      visible.transform,
+      viewport,
+    );
+
+    if (!gridPoint) {
+      return null;
+    }
+
+    return {
+      ...gridPoint,
+      point: applyTransform(this.gridToWorld, gridPoint.point),
+    };
   }
 }

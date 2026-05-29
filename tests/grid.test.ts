@@ -92,6 +92,16 @@ describe('hyperbolic tiling', () => {
     expect(snapped?.point[1]).toBeCloseTo(expected[1], 10);
   });
 
+  it('reanchors without rebuilding the generated tiling index', () => {
+    const tiling = generateHyperbolicTiling({ maxRadius: 0.85, maxTiles: 160 });
+    const grid = new AnchoredGrid(tiling);
+
+    grid.reanchor(transformFromPointPair([0.55, 0.15], [0, 0]));
+
+    expect(grid.tiling).toBe(tiling);
+    expect(grid.tiling.coarseGridIndex).toBe(tiling.coarseGridIndex);
+  });
+
   it('snaps to coarse grid points', () => {
     const tiling = generateHyperbolicTiling({ maxRadius: 0.8, maxTiles: 120 });
     const grid = new AnchoredGrid(tiling);

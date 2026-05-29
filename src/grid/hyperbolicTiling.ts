@@ -1,7 +1,7 @@
 import { abs2, type Complex } from '../geometry/complex';
 import type { DiskPoint } from '../geometry/disk';
 import { reflectInGeodesic } from '../geometry/hyperbolic';
-import { applyTransform, invertTransform, transformFromPointPair, type DiskTransform } from '../geometry/mobius';
+import { applyTransform, invertTransform, transformFromPointPair } from '../geometry/mobius';
 import { GridPointSpatialIndex } from './spatialIndex';
 
 export type HyperbolicTilingOptions = Readonly<{
@@ -72,30 +72,6 @@ export const generateHyperbolicTiling = (
   return {
     coarseGridPoints: coarse,
     coarseGridIndex: new GridPointSpatialIndex(coarse),
-  };
-};
-
-export const transformHyperbolicTiling = (
-  tiling: HyperbolicTiling,
-  transform: DiskTransform,
-): HyperbolicTiling => {
-  const transformedPoints = new Map<string, GridPoint>();
-
-  for (const gridPoint of tiling.coarseGridPoints) {
-    const point = applyTransform(transform, gridPoint.point);
-    const id = diskPointToGridId(point);
-    transformedPoints.set(gridIdKey(id), {
-      id,
-      layer: gridPoint.layer,
-      point,
-    });
-  }
-
-  const coarseGridPoints = [...transformedPoints.values()];
-
-  return {
-    coarseGridPoints,
-    coarseGridIndex: new GridPointSpatialIndex(coarseGridPoints),
   };
 };
 

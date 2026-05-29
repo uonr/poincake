@@ -12,7 +12,7 @@ import type { Note } from '../model/note';
 import { HyperbolicWorldState } from '../model/worldState';
 import { GridRenderer } from '../render/gridRenderer';
 import { NoteLayer } from '../render/noteLayer';
-import { createViewport, projectDiskPoint, screenToDisk } from '../render/viewport';
+import { createViewport, fitDiskZoom, projectDiskPoint, screenToDisk } from '../render/viewport';
 
 type InteractionMode = 'pan' | 'edit' | 'move';
 type PointerMode = 'idle' | 'editing' | 'pending-pan' | 'pan' | 'pending-item' | 'item-drag' | 'pan-from-item';
@@ -63,16 +63,31 @@ export class HyperbolicCanvasController {
   private initZoom(): void {
     const zoom = this.fitZoom();
     this.zoom = zoom;
-    this.options.zoomInput.min = String(zoom);
-    this.options.zoomInput.value = String(zoom);
-    this.options.zoomValueElement.textContent = `${zoom.toFixed(1)}×`;
+    this.syncZoomControl(zoom);
   }
 
   private fitZoom(): number {
     const rect = this.options.stage.getBoundingClientRect();
-    const cx = rect.width / 2;
-    const cy = rect.height / 2;
-    return Math.min(cx, cy) / Math.sqrt(cx * cx + cy * cy);
+    return fitDiskZoom(rect.width, rect.height);
+  }
+
+  private syncZoomControl(minZoom = this.fitZoom()): void {
+    this.options.zoomInput.min = String(minZoom);
+    this.options.zoomInput.value = String(this.zoom);
+    this.options.zoomValueElement.textContent = `${this.zoom.toFixed(2)}×`;
+  }
+
+  private updateMinimumZoom(): void {
+    const minZoom = this.fitZoom();
+    const previousMinZoom = Number.parseFloat(this.options.zoomInput.min);
+    const wasAtMinimum = Number.isFinite(previousMinZoom)
+      && Math.abs(this.zoom - previousMinZoom) < 1e-6;
+
+    if (wasAtMinimum || this.zoom < minZoom) {
+      this.zoom = minZoom;
+    }
+
+    this.syncZoomControl(minZoom);
   }
 
   private bindPointerEvents(): void {
@@ -114,7 +129,7 @@ export class HyperbolicCanvasController {
 
     this.options.zoomInput.addEventListener('input', () => {
       this.zoom = Number.parseFloat(this.options.zoomInput.value);
-      this.options.zoomValueElement.textContent = `${this.zoom.toFixed(1)}×`;
+      this.options.zoomValueElement.textContent = `${this.zoom.toFixed(2)}×`;
       this.requestRender();
     });
 
@@ -128,9 +143,15 @@ export class HyperbolicCanvasController {
 
   private bindResize(): void {
     if (typeof ResizeObserver !== 'undefined') {
-      new ResizeObserver(() => this.requestRender()).observe(this.options.stage);
+      new ResizeObserver(() => {
+        this.updateMinimumZoom();
+        this.requestRender();
+      }).observe(this.options.stage);
     }
-    window.addEventListener('resize', () => this.requestRender());
+    window.addEventListener('resize', () => {
+      this.updateMinimumZoom();
+      this.requestRender();
+    });
   }
 
   private onPointerDown(event: PointerEvent): void {
@@ -429,7 +450,7 @@ export class HyperbolicCanvasController {
     const viewport = createViewport(this.options.stage, this.zoom);
     const gridColor = getComputedStyle(this.options.stage).getPropertyValue('--grid').trim() || '#888';
 
-    this.gridRenderer.draw(this.world.grid.tiling, this.view, viewport, gridColor);
+    this.gridRenderer.draw(this.world.grid, this.view, viewport, gridColor);
     this.noteLayer.render(this.world.notes, this.view, viewport, this.editingNoteId);
   }
 }

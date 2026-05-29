@@ -47,7 +47,6 @@ export class NoteLayer {
   }
 
   render(notes: readonly Note[], view: DiskTransform, viewport: Viewport, editingNoteId: string | null): void {
-    this.sync(notes);
     const occupiedDotCells = new Set<string>();
 
     for (const note of notes) {

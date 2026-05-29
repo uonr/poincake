@@ -16,6 +16,25 @@ export type ProjectedPoint = Readonly<{
   y: number;
 }>;
 
+const FIT_DISK_MARGIN_PX = 8;
+
+export const fitDiskZoom = (
+  width: number,
+  height: number,
+  marginPx = FIT_DISK_MARGIN_PX,
+): number => {
+  const cx = width / 2;
+  const cy = height / 2;
+  const diagonalRadius = Math.sqrt(cx * cx + cy * cy);
+
+  if (diagonalRadius <= 0) {
+    return 1;
+  }
+
+  const fittedRadius = Math.max(1, Math.min(cx, cy) - marginPx);
+  return fittedRadius / diagonalRadius;
+};
+
 export const createViewport = (stage: HTMLElement, zoom: number): Viewport => {
   const rect = stage.getBoundingClientRect();
   const cx = rect.width / 2;

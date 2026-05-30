@@ -1,4 +1,15 @@
-import { Hand, LocateFixed, Move, Redo2, Spline, Type, Undo2, ZoomIn } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Hand,
+  LocateFixed,
+  Move,
+  Redo2,
+  Spline,
+  Type,
+  Undo2,
+  ZoomIn,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { ArrowSelection } from '../core/arrowSelection';
@@ -11,6 +22,7 @@ import { generateHyperbolicTiling } from '../grid/hyperbolicTiling';
 import {
   HyperbolicCanvasController,
   type InteractionMode,
+  type NavigationHistoryState,
   type ZoomState,
 } from '../interaction/controller';
 import type { ArrowHeadMode } from '../model/arrow';
@@ -38,6 +50,10 @@ export const HyperbolicStage = () => {
   const [history, setHistory] = useState<HistoryState>({
     canUndo: false,
     canRedo: false,
+  });
+  const [navigationHistory, setNavigationHistory] = useState<NavigationHistoryState>({
+    canGoBack: false,
+    canGoForward: false,
   });
   const [zoomState, setZoomState] = useState<ZoomState>({
     zoom: 0.5,
@@ -71,6 +87,7 @@ export const HyperbolicStage = () => {
       onSelectionChange: setSelection,
       onZoomStateChange: setZoomState,
       onHistoryStateChange: setHistory,
+      onNavigationHistoryStateChange: setNavigationHistory,
     });
     controllerRef.current = controller;
 
@@ -263,6 +280,30 @@ export const HyperbolicStage = () => {
             shortcut="A, 4"
             onClick={() => changeMode('arrow')}
           />
+          {navigationHistory.canGoBack || navigationHistory.canGoForward ? (
+            <div className="view-history-controls" data-testid="view-history-controls">
+              <Tooltip label="Back">
+                <button
+                  type="button"
+                  aria-label="Back"
+                  onClick={() => controllerRef.current?.goBack()}
+                  disabled={!navigationHistory.canGoBack}
+                >
+                  <ChevronLeft size={14} aria-hidden />
+                </button>
+              </Tooltip>
+              <Tooltip label="Forward">
+                <button
+                  type="button"
+                  aria-label="Forward"
+                  onClick={() => controllerRef.current?.goForward()}
+                  disabled={!navigationHistory.canGoForward}
+                >
+                  <ChevronRight size={14} aria-hidden />
+                </button>
+              </Tooltip>
+            </div>
+          ) : null}
         </fieldset>
       </div>
       <div className="zoom-control" data-testid="zoom-controls">

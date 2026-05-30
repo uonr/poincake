@@ -32,6 +32,26 @@ test('zooms with the wheel over blank canvas space', async ({ page }) => {
   await expect(zoomValue).not.toHaveText(before ?? '');
 });
 
+test('shows view back and forward controls after a jump', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page.getByTestId('view-history-controls')).toBeHidden();
+
+  const point = await findBlankStagePoint(page);
+  await page.mouse.click(point.x, point.y);
+
+  const controls = page.getByTestId('view-history-controls');
+  await expect(controls).toBeVisible();
+  await expect(controls.getByRole('button', { name: 'Back' })).toBeEnabled();
+  await expect(controls.getByRole('button', { name: 'Forward' })).toBeDisabled();
+
+  await controls.getByRole('button', { name: 'Back' }).click();
+  await expect(controls.getByRole('button', { name: 'Forward' })).toBeEnabled();
+
+  await controls.getByRole('button', { name: 'Forward' }).click();
+  await expect(controls.getByRole('button', { name: 'Back' })).toBeEnabled();
+});
+
 test('switches modes with keyboard shortcuts and advertises them in tooltips', async ({ page }) => {
   await page.goto('/');
 

@@ -713,6 +713,24 @@ body {
   color: var(--text);
 }
 
+.mode-buttons button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.view-history-controls {
+  border-left: 0.5px solid var(--border);
+  display: flex;
+  gap: 2px;
+  margin-left: 2px;
+  padding-left: 6px;
+}
+
+.view-history-controls button {
+  justify-content: center;
+  padding-inline: 7px;
+}
+
 .zoom-control {
   align-items: center;
   background: var(--surface-elevated);

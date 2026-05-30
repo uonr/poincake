@@ -55,6 +55,12 @@ type AnchoredPoint = Readonly<{
   point: DiskPoint;
 }>;
 
+type FlyToOptions = Readonly<{
+  ms?: number;
+  onDone?: () => void;
+  recordNavigation?: boolean;
+}>;
+
 export type HyperbolicCanvasControllerOptions = Readonly<{
   stage: HTMLElement;
   canvas: HTMLCanvasElement;
@@ -68,11 +74,17 @@ export type HyperbolicCanvasControllerOptions = Readonly<{
   onCoordinateTargetChange?: (target: CoordinateTarget | null) => void;
   onZoomStateChange?: (state: ZoomState) => void;
   onHistoryStateChange?: (state: HistoryState) => void;
+  onNavigationHistoryStateChange?: (state: NavigationHistoryState) => void;
 }>;
 
 export type ZoomState = Readonly<{
   zoom: number;
   minZoom: number;
+}>;
+
+export type NavigationHistoryState = Readonly<{
+  canGoBack: boolean;
+  canGoForward: boolean;
 }>;
 
 export class HyperbolicCanvasController {
@@ -104,6 +116,8 @@ export class HyperbolicCanvasController {
   private pendingArrowHitId: string | null = null;
   private selectedArrowId: string | null = null;
   private hoveredArrowId: string | null = null;
+  private readonly navigationBackStack: DiskPoint[] = [];
+  private readonly navigationForwardStack: DiskPoint[] = [];
   private flying = false;
   private rafId: number | null = null;
   private started = false;
@@ -144,6 +158,7 @@ export class HyperbolicCanvasController {
     this.emitSelection();
     this.emitCoordinateTarget();
     this.emitHistoryState();
+    this.emitNavigationHistoryState();
     this.requestRender();
   }
 
@@ -244,7 +259,7 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    this.flyTo(this.notePoint(note));
+    this.flyTo(this.notePoint(note), { recordNavigation: true });
   }
 
   deleteSelectedNote(): void {
@@ -326,7 +341,37 @@ export class HyperbolicCanvasController {
       this.cancelEditing();
     }
 
-    this.flyTo(this.world.home);
+    this.flyTo(this.world.home, { recordNavigation: true });
+  }
+
+  goBack(): void {
+    if (this.flying) {
+      return;
+    }
+
+    const target = this.navigationBackStack.pop();
+    if (!target) {
+      return;
+    }
+
+    this.navigationForwardStack.push(this.currentViewCenter());
+    this.emitNavigationHistoryState();
+    this.flyTo(target);
+  }
+
+  goForward(): void {
+    if (this.flying) {
+      return;
+    }
+
+    const target = this.navigationForwardStack.pop();
+    if (!target) {
+      return;
+    }
+
+    this.navigationBackStack.push(this.currentViewCenter());
+    this.emitNavigationHistoryState();
+    this.flyTo(target);
   }
 
   exportWorldFileText(): string {
@@ -345,6 +390,8 @@ export class HyperbolicCanvasController {
     this.world.grid.restoreChartSnapshots(content.charts);
     this.world.replaceContent(content.notes, content.arrows);
     this.history.clear();
+    this.navigationBackStack.length = 0;
+    this.navigationForwardStack.length = 0;
     this.invalidateWorldPointCache();
 
     this.view = identityTransform;
@@ -374,6 +421,7 @@ export class HyperbolicCanvasController {
     this.emitSelection();
     this.emitCoordinateTarget();
     this.emitHistoryState();
+    this.emitNavigationHistoryState();
     this.requestRender();
   }
 
@@ -621,6 +669,7 @@ export class HyperbolicCanvasController {
     this.dragStartPoint = dragStartPoint;
     this.view = identityTransform;
     this.transformWorldPointCache(reanchorTransform);
+    this.transformNavigationHistory(reanchorTransform);
   }
 
   private dragItemToPointer(event: PointerEvent): void {
@@ -866,6 +915,13 @@ export class HyperbolicCanvasController {
     this.options.onHistoryStateChange?.(this.history.state);
   }
 
+  private emitNavigationHistoryState(): void {
+    this.options.onNavigationHistoryStateChange?.({
+      canGoBack: this.navigationBackStack.length > 0,
+      canGoForward: this.navigationForwardStack.length > 0,
+    });
+  }
+
   private endPointer(event?: PointerEvent): void {
     if (this.pointerMode === 'idle' || this.pointerMode === 'editing' || this.flying) {
       return;
@@ -907,7 +963,7 @@ export class HyperbolicCanvasController {
           }
         }
         this.selectNote(null);
-        this.flyTo(this.dragStartPoint);
+        this.flyTo(this.dragStartPoint, { recordNavigation: true });
       } else if (this.pointerMode === 'pending-item' && this.dragNoteId) {
         const note = this.world.notes.find((candidate) => candidate.id === this.dragNoteId);
         if (note) {
@@ -971,7 +1027,7 @@ export class HyperbolicCanvasController {
       return true;
     }
 
-    this.flyTo(target);
+    this.flyTo(target, { recordNavigation: true });
     return true;
   }
 
@@ -992,7 +1048,7 @@ export class HyperbolicCanvasController {
     }
 
     try {
-      this.flyTo(this.world.grid.worldPointForAnchor(anchor));
+      this.flyTo(this.world.grid.worldPointForAnchor(anchor), { recordNavigation: true });
     } catch {
       return false;
     }
@@ -1042,13 +1098,16 @@ export class HyperbolicCanvasController {
     this.editingVisible = false;
     this.options.onEditingSessionChange?.(null);
     this.emitSelection();
-    this.flyTo(this.notePoint(note), 380, () => {
-      if (this.editingNoteId !== note.id) {
-        return;
-      }
+    this.flyTo(this.notePoint(note), {
+      ms: 380,
+      onDone: () => {
+        if (this.editingNoteId !== note.id) {
+          return;
+        }
 
-      this.editingVisible = true;
-      this.render();
+        this.editingVisible = true;
+        this.render();
+      },
     });
   }
 
@@ -1347,14 +1406,18 @@ export class HyperbolicCanvasController {
     return note;
   }
 
-  private flyTo(target: DiskPoint, ms = 450, onDone?: () => void): void {
+  private flyTo(target: DiskPoint, options: FlyToOptions = {}): void {
     if (this.flying) {
       return;
     }
 
+    const ms = options.ms ?? 450;
     const startView = this.view;
     const startPosition = applyTransform(startView, target);
     const startTime = performance.now();
+    if (options.recordNavigation) {
+      this.recordNavigationJump(target);
+    }
     this.flying = true;
 
     const step = (): void => {
@@ -1376,7 +1439,7 @@ export class HyperbolicCanvasController {
           this.flying = false;
           this.reanchorIfNeeded();
           this.render();
-          onDone?.();
+          options.onDone?.();
         }
       } catch (error) {
         this.flying = false;
@@ -1385,6 +1448,23 @@ export class HyperbolicCanvasController {
     };
 
     requestAnimationFrame(step);
+  }
+
+  private currentViewCenter(): DiskPoint {
+    return applyTransform(invertTransform(this.view), [0, 0]);
+  }
+
+  private recordNavigationJump(target: DiskPoint): void {
+    const current = this.currentViewCenter();
+    const dx = current[0] - target[0];
+    const dy = current[1] - target[1];
+    if (dx * dx + dy * dy < 1e-8) {
+      return;
+    }
+
+    this.navigationBackStack.push(current);
+    this.navigationForwardStack.length = 0;
+    this.emitNavigationHistoryState();
   }
 
   private emitArrowSelection(viewport: Viewport): void {
@@ -1445,6 +1525,21 @@ export class HyperbolicCanvasController {
         from: applyTransform(transform, geometry.from),
         to: applyTransform(transform, geometry.to),
       });
+    }
+  }
+
+  private transformNavigationHistory(transform: DiskTransform): void {
+    for (let i = 0; i < this.navigationBackStack.length; i += 1) {
+      const point = this.navigationBackStack[i];
+      if (point) {
+        this.navigationBackStack[i] = applyTransform(transform, point);
+      }
+    }
+    for (let i = 0; i < this.navigationForwardStack.length; i += 1) {
+      const point = this.navigationForwardStack[i];
+      if (point) {
+        this.navigationForwardStack[i] = applyTransform(transform, point);
+      }
     }
   }
 

@@ -1,69 +1,262 @@
+import type { EditingSession } from '../core/editingSession';
+import type { SelectionState } from '../core/selectionState';
 import { abs2 } from '../geometry/complex';
 import { clampDisk, type DiskPoint } from '../geometry/disk';
 import {
   applyTransform,
+  type DiskTransform,
   identityTransform,
   invertTransform,
   transformFromPointPair,
-  type DiskTransform,
 } from '../geometry/mobius';
 import type { AnchoredGrid } from '../grid/anchoredGrid';
-import type { Note } from '../model/note';
+import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
+import { type HistoryState, WorldHistory } from '../model/history';
+import { type Note, type NoteColor, noteColor, noteDisplayText } from '../model/note';
+import { type NoteDraft, parseNoteDraft } from '../model/noteDraft';
 import { HyperbolicWorldState } from '../model/worldState';
 import { GridRenderer } from '../render/gridRenderer';
 import { NoteLayer } from '../render/noteLayer';
 import { createViewport, fitDiskZoom, projectDiskPoint, screenToDisk } from '../render/viewport';
 
-type InteractionMode = 'pan' | 'edit' | 'move';
-type PointerMode = 'idle' | 'editing' | 'pending-pan' | 'pan' | 'pending-item' | 'item-drag' | 'pan-from-item';
+export type InteractionMode = 'pan' | 'edit' | 'move';
+type PointerMode =
+  | 'idle'
+  | 'editing'
+  | 'pending-pan'
+  | 'pan'
+  | 'pending-item'
+  | 'item-drag'
+  | 'pan-from-item';
 
 export type HyperbolicCanvasControllerOptions = Readonly<{
   stage: HTMLElement;
   canvas: HTMLCanvasElement;
   notes: Note[];
   grid: AnchoredGrid;
-  zoomInput: HTMLInputElement;
-  zoomValueElement: HTMLElement;
-  resetButton: HTMLButtonElement;
+  initialMode?: InteractionMode;
+  onEditingSessionChange?: (session: EditingSession | null) => void;
+  onSelectionChange?: (selection: SelectionState) => void;
+  onZoomStateChange?: (state: ZoomState) => void;
+  onHistoryStateChange?: (state: HistoryState) => void;
+}>;
+
+export type ZoomState = Readonly<{
+  zoom: number;
+  minZoom: number;
 }>;
 
 export class HyperbolicCanvasController {
   private readonly gridRenderer: GridRenderer;
   private readonly noteLayer: NoteLayer;
   private readonly world: HyperbolicWorldState;
-  private interactionMode: InteractionMode = 'pan';
+  private readonly history = new WorldHistory();
+  private interactionMode: InteractionMode;
   private zoom = 1;
+  private minZoom = 0.5;
   private view: DiskTransform = identityTransform;
   private pointerMode: PointerMode = 'idle';
   private dragStartPoint: DiskPoint | null = null;
   private downPosition: DiskPoint | null = null;
   private didMove = false;
   private dragNoteId: string | null = null;
+  private selectedNoteId: string | null = null;
+  private hoveredNoteId: string | null = null;
+  private draggingNoteId: string | null = null;
+  private dragMoveBefore: NoteMoveSnapshot | null = null;
   private editingNoteId: string | null = null;
+  private editingVisible = false;
   private nextNoteId: number;
   private flying = false;
   private rafId: number | null = null;
+  private started = false;
+  private readonly disposers: (() => void)[] = [];
 
   constructor(private readonly options: HyperbolicCanvasControllerOptions) {
     this.gridRenderer = new GridRenderer(options.canvas);
     this.noteLayer = new NoteLayer(options.stage);
     this.world = new HyperbolicWorldState(options.notes, options.grid);
+    this.interactionMode = options.initialMode ?? 'pan';
     this.nextNoteId = options.notes.length;
   }
 
   start(): void {
+    if (this.started) {
+      return;
+    }
+
+    this.started = true;
     this.noteLayer.sync(this.world.notes);
     this.bindPointerEvents();
-    this.bindControls();
     this.bindResize();
     this.initZoom();
-    requestAnimationFrame(() => this.render());
+    this.emitSelection();
+    this.emitHistoryState();
+    this.requestRender();
+  }
+
+  dispose(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+
+    while (this.disposers.length > 0) {
+      this.disposers.pop()?.();
+    }
+
+    this.noteLayer.dispose();
+    this.options.stage.classList.remove('dragging', 'item-drag', 'near-snap');
+    this.options.onEditingSessionChange?.(null);
+    this.emitSelection();
+    this.started = false;
+  }
+
+  commitEditingDraft(draft: NoteDraft): void {
+    if (!this.editingNoteId) {
+      return;
+    }
+
+    const parsed = parseNoteDraft(draft);
+    if (!parsed.ok) {
+      return;
+    }
+
+    this.applyCommand({
+      type: 'update-note',
+      noteId: this.editingNoteId,
+      content: parsed.value.content,
+      appearance: parsed.value.appearance,
+      updatedAt: Date.now(),
+    });
+    this.finishEditingSession();
+  }
+
+  cancelEditing(): void {
+    if (!this.editingNoteId) {
+      return;
+    }
+
+    this.finishEditingSession();
+  }
+
+  deleteEditingNote(): void {
+    if (!this.editingNoteId) {
+      return;
+    }
+
+    this.applyCommand({
+      type: 'delete-note',
+      noteId: this.editingNoteId,
+    });
+    this.selectedNoteId = null;
+
+    this.finishEditingSession();
+  }
+
+  editSelectedNote(): void {
+    const note = this.selectedNote();
+    if (!note) {
+      return;
+    }
+
+    this.startEdit(note);
+  }
+
+  centerSelectedNote(): void {
+    const note = this.selectedNote();
+    if (!note) {
+      return;
+    }
+
+    this.flyTo(note.position);
+  }
+
+  deleteSelectedNote(): void {
+    if (!this.selectedNoteId) {
+      return;
+    }
+
+    this.applyCommand({
+      type: 'delete-note',
+      noteId: this.selectedNoteId,
+    });
+    this.selectedNoteId = null;
+    this.emitSelection();
+    this.requestRender();
+  }
+
+  setSelectedNoteColor(color: NoteColor): void {
+    const note = this.selectedNote();
+    if (!note) {
+      return;
+    }
+
+    this.applyCommand({
+      type: 'update-note',
+      noteId: note.id,
+      content: note.content,
+      appearance: {
+        color,
+      },
+      updatedAt: Date.now(),
+    });
+    this.emitSelection();
+    this.requestRender();
+  }
+
+  undo(): void {
+    if (this.editingNoteId) {
+      this.cancelEditing();
+    }
+
+    if (!this.history.undo(this.world)) {
+      return;
+    }
+
+    this.afterHistoryChange();
+  }
+
+  redo(): void {
+    if (this.editingNoteId) {
+      this.cancelEditing();
+    }
+
+    if (!this.history.redo(this.world)) {
+      return;
+    }
+
+    this.afterHistoryChange();
+  }
+
+  setInteractionMode(mode: InteractionMode): void {
+    if (this.editingNoteId) {
+      this.cancelEditing();
+    }
+
+    this.interactionMode = mode;
+    this.options.stage.classList.remove('near-snap');
+  }
+
+  setZoom(zoom: number): void {
+    this.zoom = Math.max(zoom, this.minZoom);
+    this.emitZoomState();
+    this.requestRender();
+  }
+
+  resetView(): void {
+    if (this.editingNoteId) {
+      this.cancelEditing();
+    }
+
+    this.flyTo(this.world.home);
   }
 
   private initZoom(): void {
     const zoom = this.fitZoom();
     this.zoom = zoom;
-    this.syncZoomControl(zoom);
+    this.minZoom = zoom;
+    this.emitZoomState();
   }
 
   private fitZoom(): number {
@@ -71,101 +264,85 @@ export class HyperbolicCanvasController {
     return fitDiskZoom(rect.width, rect.height);
   }
 
-  private syncZoomControl(minZoom = this.fitZoom()): void {
-    this.options.zoomInput.min = String(minZoom);
-    this.options.zoomInput.value = String(this.zoom);
-    this.options.zoomValueElement.textContent = `${this.zoom.toFixed(2)}×`;
+  private emitZoomState(): void {
+    this.options.onZoomStateChange?.({
+      zoom: this.zoom,
+      minZoom: this.minZoom,
+    });
   }
 
   private updateMinimumZoom(): void {
     const minZoom = this.fitZoom();
-    const previousMinZoom = Number.parseFloat(this.options.zoomInput.min);
-    const wasAtMinimum = Number.isFinite(previousMinZoom)
-      && Math.abs(this.zoom - previousMinZoom) < 1e-6;
+    const wasAtMinimum = Math.abs(this.zoom - this.minZoom) < 1e-6;
+    this.minZoom = minZoom;
 
     if (wasAtMinimum || this.zoom < minZoom) {
       this.zoom = minZoom;
     }
 
-    this.syncZoomControl(minZoom);
+    this.emitZoomState();
   }
 
   private bindPointerEvents(): void {
-    this.options.stage.addEventListener('pointerdown', (event) => this.onPointerDown(event));
-    this.options.stage.addEventListener('pointermove', (event) => this.onPointerMove(event));
-    this.options.stage.addEventListener('pointerup', () => this.endPointer());
-    this.options.stage.addEventListener('pointercancel', () => this.endPointer());
-    this.options.stage.addEventListener('pointerleave', () => {
+    this.listen<PointerEvent>(this.options.stage, 'pointerdown', (event) =>
+      this.onPointerDown(event),
+    );
+    this.listen<PointerEvent>(this.options.stage, 'pointermove', (event) =>
+      this.onPointerMove(event),
+    );
+    this.listen(this.options.stage, 'pointerup', () => this.endPointer());
+    this.listen(this.options.stage, 'pointercancel', () => this.endPointer());
+    this.listen(this.options.stage, 'pointerleave', () => {
       this.options.stage.classList.remove('near-snap');
-    });
-
-    document.addEventListener('keydown', (event) => {
-      if (this.pointerMode === 'editing' && (event.key === 'Enter' || event.key === 'Escape')) {
-        event.preventDefault();
-        this.endEdit();
-      }
-    });
-  }
-
-  private bindControls(): void {
-    const modeButtons = this.options.stage.querySelectorAll<HTMLButtonElement>('.mode-buttons button');
-    modeButtons.forEach((button) => {
-      button.addEventListener('click', () => {
-        if (this.editingNoteId) {
-          this.endEdit();
-        }
-
-        const mode = button.dataset.mode;
-        if (!isInteractionMode(mode)) {
-          return;
-        }
-
-        this.interactionMode = mode;
-        modeButtons.forEach((candidate) => candidate.classList.toggle('active', candidate === button));
-        this.options.stage.classList.remove('mode-pan', 'mode-edit', 'mode-move', 'near-snap');
-        this.options.stage.classList.add(`mode-${this.interactionMode}`);
-      });
-    });
-
-    this.options.zoomInput.addEventListener('input', () => {
-      this.zoom = Number.parseFloat(this.options.zoomInput.value);
-      this.options.zoomValueElement.textContent = `${this.zoom.toFixed(2)}×`;
-      this.requestRender();
-    });
-
-    this.options.resetButton.addEventListener('click', () => {
-      if (this.editingNoteId) {
-        this.endEdit();
-      }
-      this.flyTo(this.world.home);
     });
   }
 
   private bindResize(): void {
     if (typeof ResizeObserver !== 'undefined') {
-      new ResizeObserver(() => {
+      const observer = new ResizeObserver(() => {
         this.updateMinimumZoom();
         this.requestRender();
-      }).observe(this.options.stage);
+      });
+      observer.observe(this.options.stage);
+      this.disposers.push(() => observer.disconnect());
     }
-    window.addEventListener('resize', () => {
+    this.listen(window, 'resize', () => {
       this.updateMinimumZoom();
       this.requestRender();
     });
   }
 
+  private listen<TEvent extends Event>(
+    target: EventTarget,
+    type: string,
+    listener: (event: TEvent) => void,
+  ): void {
+    const eventListener = (event: Event): void => {
+      listener(event as TEvent);
+    };
+
+    target.addEventListener(type, eventListener);
+    this.disposers.push(() => target.removeEventListener(type, eventListener));
+  }
+
   private onPointerDown(event: PointerEvent): void {
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('.mode-buttons, .zoom-control')) {
+    if (
+      target?.closest(
+        [
+          '[data-testid="note-editor"]',
+          '[data-testid="inspector"]',
+          '[data-testid="history-controls"]',
+          '[data-testid="mode-controls"]',
+          '[data-testid="zoom-controls"]',
+        ].join(', '),
+      )
+    ) {
       return;
     }
 
     if (this.pointerMode === 'editing') {
-      const targetNoteId = this.noteLayer.getNoteIdFromEventTarget(event.target);
-      if (targetNoteId === this.editingNoteId) {
-        return;
-      }
-      this.endEdit();
+      this.cancelEditing();
       event.preventDefault();
       return;
     }
@@ -176,6 +353,9 @@ export class HyperbolicCanvasController {
 
     const viewport = createViewport(this.options.stage, this.zoom);
     const noteId = this.noteLayer.getNoteIdFromEventTarget(event.target);
+    if (noteId) {
+      this.selectNote(noteId);
+    }
     this.downPosition = [event.clientX, event.clientY];
     this.didMove = false;
     const z = clampDisk(screenToDisk(event.clientX, event.clientY, viewport));
@@ -195,6 +375,7 @@ export class HyperbolicCanvasController {
 
   private onPointerMove(event: PointerEvent): void {
     if (this.pointerMode === 'idle') {
+      this.updateHoveredNote(event.target);
       if (this.interactionMode === 'edit') {
         this.updateSnapCursor(event.clientX, event.clientY);
       }
@@ -254,7 +435,12 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    const [dragStartPoint = null] = this.world.reanchor(this.view, [this.dragStartPoint]);
+    const { transientPoints = [] } = applyWorldCommand(this.world, {
+      type: 'reanchor-world',
+      transform: this.view,
+      transientPoints: [this.dragStartPoint],
+    });
+    const [dragStartPoint = null] = transientPoints;
     this.dragStartPoint = dragStartPoint;
     this.view = identityTransform;
   }
@@ -266,6 +452,9 @@ export class HyperbolicCanvasController {
 
     if (this.pointerMode !== 'item-drag') {
       this.pointerMode = 'item-drag';
+      this.draggingNoteId = this.dragNoteId;
+      this.dragMoveBefore = this.currentMoveSnapshot(this.dragNoteId);
+      this.emitSelection();
       this.options.stage.classList.add('item-drag');
     }
 
@@ -276,12 +465,127 @@ export class HyperbolicCanvasController {
       this.view,
       viewport,
     );
-    const note = this.world.notes.find((candidate) => candidate.id === this.dragNoteId);
-
-    if (snappedGridPoint && note) {
-      note.position = snappedGridPoint.point;
-      note.updatedAt = Date.now();
+    if (snappedGridPoint) {
+      this.applyCommand(
+        {
+          type: 'move-note',
+          noteId: this.dragNoteId,
+          position: snappedGridPoint.point,
+          updatedAt: Date.now(),
+        },
+        { recordHistory: false },
+      );
     }
+  }
+
+  private currentMoveSnapshot(noteId: string | null): NoteMoveSnapshot | null {
+    if (!noteId) {
+      return null;
+    }
+
+    const note = this.world.notes.find((candidate) => candidate.id === noteId);
+    if (!note) {
+      return null;
+    }
+
+    return {
+      position: note.position,
+      updatedAt: note.updatedAt,
+    };
+  }
+
+  private recordFinishedMove(): void {
+    if (!this.dragNoteId || !this.dragMoveBefore) {
+      return;
+    }
+
+    const after = this.currentMoveSnapshot(this.dragNoteId);
+    if (!after || diskPointsAlmostEqual(this.dragMoveBefore.position, after.position)) {
+      return;
+    }
+
+    this.history.record({
+      type: 'move-note',
+      noteId: this.dragNoteId,
+      before: this.dragMoveBefore,
+      after,
+    });
+    this.emitHistoryState();
+  }
+
+  private resetDragState(): void {
+    this.dragStartPoint = null;
+    this.dragNoteId = null;
+    this.draggingNoteId = null;
+    this.dragMoveBefore = null;
+    this.emitSelection();
+  }
+
+  private applyCommand(
+    command: WorldCommand,
+    options: Readonly<{ recordHistory?: boolean }> = {},
+  ): void {
+    const result = applyWorldCommand(this.world, command);
+    if (options.recordHistory !== false && result.patch) {
+      this.history.record(result.patch);
+      this.emitHistoryState();
+    }
+
+    this.noteLayer.sync(this.world.notes);
+  }
+
+  private afterHistoryChange(): void {
+    this.noteLayer.sync(this.world.notes);
+    if (this.selectedNoteId && !this.selectedNote()) {
+      this.selectedNoteId = null;
+    }
+    this.emitSelection();
+    this.emitHistoryState();
+    this.requestRender();
+  }
+
+  private selectedNote(): Note | null {
+    if (!this.selectedNoteId) {
+      return null;
+    }
+
+    return this.world.notes.find((candidate) => candidate.id === this.selectedNoteId) ?? null;
+  }
+
+  private selectNote(noteId: string | null): void {
+    this.selectedNoteId = noteId;
+    this.emitSelection();
+  }
+
+  private updateHoveredNote(target: EventTarget | null): void {
+    const nextHoveredNoteId = this.noteLayer.getNoteIdFromEventTarget(target);
+    if (nextHoveredNoteId === this.hoveredNoteId) {
+      return;
+    }
+
+    this.hoveredNoteId = nextHoveredNoteId;
+    this.emitSelection();
+  }
+
+  private emitSelection(): void {
+    const selectedNote = this.selectedNote();
+    this.options.onSelectionChange?.({
+      selectedNoteId: selectedNote?.id ?? null,
+      hoveredNoteId: this.hoveredNoteId,
+      editingNoteId: this.editingNoteId,
+      draggingNoteId: this.draggingNoteId,
+      selectedNote: selectedNote
+        ? {
+            id: selectedNote.id,
+            text: noteDisplayText(selectedNote),
+            color: noteColor(selectedNote),
+          }
+        : null,
+    });
+  }
+
+  private emitHistoryState(): void {
+    this.options.onHistoryStateChange?.(this.history.state);
   }
 
   private endPointer(): void {
@@ -289,6 +593,7 @@ export class HyperbolicCanvasController {
       return;
     }
 
+    const endedPointerMode = this.pointerMode;
     this.options.stage.classList.remove('dragging', 'item-drag');
 
     if (!this.didMove) {
@@ -302,79 +607,95 @@ export class HyperbolicCanvasController {
             viewport,
           );
           if (snapped) {
-            const existing = this.world.notes.find(
-              (n) => diskPointsAlmostEqual(n.position, snapped.point),
+            const existing = this.world.notes.find((n) =>
+              diskPointsAlmostEqual(n.position, snapped.point),
             );
             const target = existing ?? this.createNote(snapped.point);
+            this.selectNote(target.id);
             this.startEdit(target);
-            this.dragStartPoint = null;
+            this.resetDragState();
             return;
           }
         }
+        this.selectNote(null);
         this.flyTo(this.dragStartPoint);
       } else if (this.pointerMode === 'pending-item' && this.dragNoteId) {
         const note = this.world.notes.find((candidate) => candidate.id === this.dragNoteId);
         if (note) {
           if (this.interactionMode === 'edit') {
             this.startEdit(note);
-            this.dragStartPoint = null;
-            this.dragNoteId = null;
+            this.resetDragState();
             return;
           }
-          this.flyTo(note.position);
         }
       }
     }
 
+    if (endedPointerMode === 'item-drag') {
+      this.recordFinishedMove();
+    }
+
     this.pointerMode = 'idle';
-    this.dragStartPoint = null;
-    this.dragNoteId = null;
+    this.resetDragState();
     this.requestRender();
   }
 
   private startEdit(note: Note): void {
+    this.selectedNoteId = note.id;
     this.pointerMode = 'editing';
     this.editingNoteId = note.id;
+    this.editingVisible = false;
+    this.options.onEditingSessionChange?.(null);
+    this.emitSelection();
     this.flyTo(note.position, 380, () => {
-      const element = this.noteLayer.getElement(note.id);
-      if (!element) {
+      if (this.editingNoteId !== note.id) {
         return;
       }
 
-      element.contentEditable = 'plaintext-only';
-      element.classList.remove('as-dot', 'as-pill-h', 'as-pill-v');
-      element.classList.add('editing');
+      this.editingVisible = true;
       this.render();
-      element.focus();
-
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
     });
   }
 
-  private endEdit(): void {
-    if (!this.editingNoteId) {
+  private finishEditingSession(): void {
+    this.editingNoteId = null;
+    this.editingVisible = false;
+    this.pointerMode = 'idle';
+    this.options.onEditingSessionChange?.(null);
+    this.emitSelection();
+    this.requestRender();
+  }
+
+  private emitEditingSession(viewport: ReturnType<typeof createViewport>): void {
+    if (!this.options.onEditingSessionChange) {
+      return;
+    }
+
+    if (!this.editingNoteId || !this.editingVisible) {
+      this.options.onEditingSessionChange(null);
       return;
     }
 
     const note = this.world.notes.find((candidate) => candidate.id === this.editingNoteId);
-    const element = this.noteLayer.getElement(this.editingNoteId);
-    if (element && note) {
-      const nextText = element.textContent?.trim() || '·';
-      note.text = nextText;
-      note.updatedAt = Date.now();
-      element.textContent = nextText;
-      element.contentEditable = 'false';
-      element.classList.remove('editing');
-      element.blur();
+    if (!note) {
+      this.options.onEditingSessionChange(null);
+      return;
     }
 
-    this.editingNoteId = null;
-    this.pointerMode = 'idle';
-    this.requestRender();
+    const transformed = applyTransform(this.view, note.position);
+    const projected = projectDiskPoint(transformed, viewport);
+    this.options.onEditingSessionChange({
+      noteId: note.id,
+      anchor: note.position,
+      draft: {
+        text: noteDisplayText(note),
+        color: noteColor(note),
+      },
+      screenPosition: {
+        x: projected.x,
+        y: projected.y,
+      },
+    });
   }
 
   private updateSnapCursor(clientX: number, clientY: number): void {
@@ -395,13 +716,20 @@ export class HyperbolicCanvasController {
     const note: Note = {
       id: `note-${this.nextNoteId++}`,
       position,
-      text: '',
-      color: 'c1',
+      content: {
+        kind: 'plain-text',
+        text: 'New note',
+      },
+      appearance: {
+        color: 'c1',
+      },
       createdAt: now,
       updatedAt: now,
     };
-    this.world.notes.push(note);
-    this.noteLayer.sync(this.world.notes);
+    this.applyCommand({
+      type: 'create-note',
+      note,
+    });
     return note;
   }
 
@@ -417,7 +745,7 @@ export class HyperbolicCanvasController {
 
     const step = (): void => {
       const t = Math.min(1, (performance.now() - startTime) / ms);
-      const eased = 1 - Math.pow(1 - t, 3);
+      const eased = 1 - (1 - t) ** 3;
       const position: DiskPoint = [startPosition[0] * (1 - eased), startPosition[1] * (1 - eased)];
       this.view = transformFromPointPair(target, position);
       this.render();
@@ -448,15 +776,20 @@ export class HyperbolicCanvasController {
 
   private render(): void {
     const viewport = createViewport(this.options.stage, this.zoom);
-    const gridColor = getComputedStyle(this.options.stage).getPropertyValue('--grid').trim() || '#888';
+    const gridColor =
+      getComputedStyle(this.options.stage).getPropertyValue('--grid').trim() || '#888';
 
     this.gridRenderer.draw(this.world.grid, this.view, viewport, gridColor);
-    this.noteLayer.render(this.world.notes, this.view, viewport, this.editingNoteId);
+    this.noteLayer.render(
+      this.world.notes,
+      this.view,
+      viewport,
+      this.editingVisible ? this.editingNoteId : null,
+      this.selectedNoteId,
+    );
+    this.emitEditingSession(viewport);
   }
 }
-
-const isInteractionMode = (value: string | undefined): value is InteractionMode =>
-  value === 'pan' || value === 'edit' || value === 'move';
 
 const diskPointsAlmostEqual = (a: DiskPoint, b: DiskPoint): boolean => {
   const dx = a[0] - b[0];

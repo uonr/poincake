@@ -44,7 +44,9 @@ describe('hyperbolic tiling', () => {
       radius: 500,
       zoom: 1,
     };
-    const gridPoint = tiling.coarseGridPoints.find((candidate) => abs2(applyTransform(view, candidate.point)) < 0.2 * 0.2);
+    const gridPoint = tiling.coarseGridPoints.find(
+      (candidate) => abs2(applyTransform(view, candidate.point)) < 0.2 * 0.2,
+    );
 
     expect(gridPoint).toBeDefined();
 
@@ -73,7 +75,9 @@ describe('hyperbolic tiling', () => {
       radius: 500,
       zoom: 1,
     };
-    const original = tiling.coarseGridPoints.find((candidate) => abs2(candidate.point) < 0.35 * 0.35);
+    const original = tiling.coarseGridPoints.find(
+      (candidate) => abs2(candidate.point) < 0.35 * 0.35,
+    );
 
     expect(original).toBeDefined();
 
@@ -105,7 +109,9 @@ describe('hyperbolic tiling', () => {
   it('snaps to coarse grid points', () => {
     const tiling = generateHyperbolicTiling({ maxRadius: 0.8, maxTiles: 120 });
     const grid = new AnchoredGrid(tiling);
-    const coarsePoint = tiling.coarseGridPoints.find((candidate) => abs2(candidate.point) < 0.4 * 0.4);
+    const coarsePoint = tiling.coarseGridPoints.find(
+      (candidate) => abs2(candidate.point) < 0.4 * 0.4,
+    );
     const viewport: Viewport = {
       width: 800,
       height: 600,

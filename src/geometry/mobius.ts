@@ -1,13 +1,4 @@
-import {
-  add,
-  abs2,
-  conjugate,
-  divide,
-  multiply,
-  negate,
-  scale,
-  type Complex,
-} from './complex';
+import { abs2, add, type Complex, conjugate, divide, multiply, negate, scale } from './complex';
 import type { DiskPoint } from './disk';
 
 export type DiskTransform = Readonly<{
@@ -26,10 +17,7 @@ export const applyTransform = (transform: DiskTransform, z: DiskPoint): DiskPoin
   return divide(numerator, denominator);
 };
 
-export const composeTransforms = (
-  first: DiskTransform,
-  second: DiskTransform,
-): DiskTransform => ({
+export const composeTransforms = (first: DiskTransform, second: DiskTransform): DiskTransform => ({
   a: add(multiply(first.a, second.a), multiply(first.b, conjugate(second.b))),
   b: add(multiply(first.a, second.b), multiply(first.b, conjugate(second.a))),
 });

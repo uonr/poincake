@@ -2,13 +2,13 @@ import { DISK_EDGE_EPSILON } from '../geometry/disk';
 import {
   applyTransform,
   composeTransforms,
+  type DiskTransform,
   identityTransform,
   invertTransform,
-  type DiskTransform,
 } from '../geometry/mobius';
 import type { Viewport } from '../render/viewport';
-import { nearestVisibleGridPoint } from './snap';
 import type { GridPoint, HyperbolicTiling } from './hyperbolicTiling';
+import { nearestVisibleGridPoint } from './snap';
 import { viewDiskWorldBounds } from './spatialIndex';
 
 export type AnchoredGridView = Readonly<{

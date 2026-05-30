@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { abs2 } from '../src/geometry/complex';
-import { applyTransform, identityTransform, invertTransform, transformFromPointPair } from '../src/geometry/mobius';
+import {
+  applyTransform,
+  identityTransform,
+  invertTransform,
+  transformFromPointPair,
+} from '../src/geometry/mobius';
 
 describe('disk transforms', () => {
   it('leaves a point unchanged with the identity transform', () => {

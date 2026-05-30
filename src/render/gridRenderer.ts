@@ -20,12 +20,7 @@ export class GridRenderer {
     this.context = context;
   }
 
-  draw(
-    grid: AnchoredGrid,
-    view: DiskTransform,
-    viewport: Viewport,
-    color: string,
-  ): void {
+  draw(grid: AnchoredGrid, view: DiskTransform, viewport: Viewport, color: string): void {
     const dpr = window.devicePixelRatio || 1;
     const targetWidth = Math.round(viewport.width * dpr);
     const targetHeight = Math.round(viewport.height * dpr);

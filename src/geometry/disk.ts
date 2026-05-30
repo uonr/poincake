@@ -1,4 +1,4 @@
-import { abs, abs2, scale, type Complex } from './complex';
+import { abs, abs2, type Complex, scale } from './complex';
 
 export type DiskPoint = Complex;
 

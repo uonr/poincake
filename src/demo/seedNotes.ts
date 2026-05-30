@@ -220,8 +220,13 @@ export const seedNotes = (
     notes.push({
       id: `note-${i}`,
       position: point.point,
-      text: WORDS[Math.floor(random() * WORDS.length)] ?? 'Note',
-      color: COLORS[Math.floor(random() * COLORS.length)] ?? 'c1',
+      content: {
+        kind: 'plain-text',
+        text: WORDS[Math.floor(random() * WORDS.length)] ?? 'Note',
+      },
+      appearance: {
+        color: COLORS[Math.floor(random() * COLORS.length)] ?? 'c1',
+      },
       createdAt: now,
       updatedAt: now,
     });

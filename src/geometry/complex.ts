@@ -9,10 +9,7 @@ export const multiply = (a: Complex, b: Complex): Complex => [
 
 export const divide = (a: Complex, b: Complex): Complex => {
   const denominator = b[0] * b[0] + b[1] * b[1];
-  return [
-    (a[0] * b[0] + a[1] * b[1]) / denominator,
-    (a[1] * b[0] - a[0] * b[1]) / denominator,
-  ];
+  return [(a[0] * b[0] + a[1] * b[1]) / denominator, (a[1] * b[0] - a[0] * b[1]) / denominator];
 };
 
 export const conjugate = (a: Complex): Complex => [a[0], -a[1]];

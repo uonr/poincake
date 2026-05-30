@@ -57,11 +57,7 @@ export const projectDiskPoint = (z: DiskPoint, viewport: Viewport): ProjectedPoi
   y: viewport.cy + z[1] * viewport.radius,
 });
 
-export const screenToDisk = (
-  clientX: number,
-  clientY: number,
-  viewport: Viewport,
-): DiskPoint => [
+export const screenToDisk = (clientX: number, clientY: number, viewport: Viewport): DiskPoint => [
   (clientX - viewport.left - viewport.cx) / viewport.radius,
   (clientY - viewport.top - viewport.cy) / viewport.radius,
 ];

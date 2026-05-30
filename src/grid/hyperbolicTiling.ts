@@ -123,9 +123,6 @@ const buildTiling = (config: TilingConfig): Map<string, GridPoint> => {
   return coarseGridPoints;
 };
 
-
-
-
 const createCenteredTile = (p: number, q: number): GridTile => {
   const circumradius = Math.acosh(cot(Math.PI / p) * cot(Math.PI / q));
   const diskRadius = Math.tanh(circumradius / 2);
@@ -157,7 +154,12 @@ const collectTile = (
   for (let i = 0; i < config.p; i += 1) {
     const a = tile.vertices[i];
     const b = tile.vertices[(i + 1) % config.p];
-    if (!a || !b || abs2(a) > config.maxRadius * config.maxRadius || abs2(b) > config.maxRadius * config.maxRadius) {
+    if (
+      !a ||
+      !b ||
+      abs2(a) > config.maxRadius * config.maxRadius ||
+      abs2(b) > config.maxRadius * config.maxRadius
+    ) {
       continue;
     }
 
@@ -178,10 +180,7 @@ const addCoarseGridPoint = (
   }
 };
 
-const createGridPoint = (
-  point: DiskPoint,
-  config: TilingConfig,
-): GridPoint | null => {
+const createGridPoint = (point: DiskPoint, config: TilingConfig): GridPoint | null => {
   if (abs2(point) > config.maxRadius * config.maxRadius) {
     return null;
   }
@@ -193,8 +192,11 @@ const createGridPoint = (
   };
 };
 
-
-const hyperbolicInterpolateSegments = (a: DiskPoint, b: DiskPoint, subdivisions: number): DiskPoint[] => {
+const hyperbolicInterpolateSegments = (
+  a: DiskPoint,
+  b: DiskPoint,
+  subdivisions: number,
+): DiskPoint[] => {
   const toOrigin = transformFromPointPair(a, [0, 0]);
   const bFromOrigin = applyTransform(toOrigin, b);
   const radius = Math.sqrt(abs2(bFromOrigin));
@@ -211,10 +213,7 @@ const hyperbolicInterpolateSegments = (a: DiskPoint, b: DiskPoint, subdivisions:
 
   for (let segment = 1; segment < subdivisions; segment += 1) {
     const interpolatedRadius = Math.tanh((segment / subdivisions) * distance);
-    const interpolatedFromOrigin: DiskPoint = [
-      ux * interpolatedRadius,
-      uy * interpolatedRadius,
-    ];
+    const interpolatedFromOrigin: DiskPoint = [ux * interpolatedRadius, uy * interpolatedRadius];
 
     points.push(applyTransform(fromOrigin, interpolatedFromOrigin));
   }
@@ -226,7 +225,6 @@ const tileKey = (point: Complex): string =>
   `${Math.round(point[0] * GRID_PRECISION)},${Math.round(point[1] * GRID_PRECISION)}`;
 
 const cot = (value: number): number => 1 / Math.tan(value);
-
 
 const validateTiling = (p: number, q: number): void => {
   if (!Number.isInteger(p) || !Number.isInteger(q) || p < 3 || q < 3) {

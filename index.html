@@ -6,20 +6,7 @@
     <title>Poincake</title>
   </head>
   <body>
-    <div id="stage" class="mode-pan">
-      <canvas id="grid"></canvas>
-      <div class="mode-buttons" aria-label="Mode">
-        <button data-mode="pan" class="active" type="button">Navigate</button>
-        <button data-mode="edit" type="button">Edit</button>
-        <button data-mode="move" type="button">Move</button>
-      </div>
-      <div class="zoom-control">
-        <span>Zoom</span>
-        <input type="range" id="zoom" min="0.5" max="2.5" step="0.05" value="0.5" />
-        <span id="zoom-val">1.0×</span>
-        <button id="reset" type="button">Origin</button>
-      </div>
-    </div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

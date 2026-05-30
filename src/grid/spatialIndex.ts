@@ -8,7 +8,7 @@ export class DiskSpatialIndex<T> {
   private readonly buckets = new Map<string, T[]>();
 
   constructor(
-    private readonly items: readonly T[],
+    items: readonly T[],
     private readonly pointOf: (item: T) => DiskPoint,
     private readonly cellSize = DEFAULT_CELL_SIZE,
   ) {
@@ -63,7 +63,10 @@ export class GridPointSpatialIndex extends DiskSpatialIndex<GridPoint> {
   }
 }
 
-export const viewDiskWorldBounds = (viewCenter: DiskPoint, viewRadius: number): { center: DiskPoint; radius: number } => {
+export const viewDiskWorldBounds = (
+  viewCenter: DiskPoint,
+  viewRadius: number,
+): { center: DiskPoint; radius: number } => {
   const centerRadius2 = abs2(viewCenter);
   const viewRadius2 = viewRadius * viewRadius;
   const denominator = 1 - viewRadius2 * centerRadius2;

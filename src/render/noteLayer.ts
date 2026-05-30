@@ -1,7 +1,7 @@
 import { abs2 } from '../geometry/complex';
 import type { DiskPoint } from '../geometry/disk';
 import { applyTransform, type DiskTransform } from '../geometry/mobius';
-import type { Note } from '../model/note';
+import { type Note, noteColor, noteDisplayText } from '../model/note';
 import { projectDiskPoint, type Viewport } from './viewport';
 
 const SCALE_TEXT = 0.26;
@@ -14,6 +14,14 @@ export class NoteLayer {
   private readonly elements = new Map<string, HTMLDivElement>();
 
   constructor(private readonly stage: HTMLElement) {}
+
+  dispose(): void {
+    for (const element of this.elements.values()) {
+      element.remove();
+    }
+
+    this.elements.clear();
+  }
 
   sync(notes: readonly Note[]): void {
     const liveIds = new Set(notes.map((note) => note.id));
@@ -29,37 +37,44 @@ export class NoteLayer {
       let element = this.elements.get(note.id);
       if (!element) {
         element = document.createElement('div');
-        element.className = `item ${note.color}`;
+        element.className = `item ${noteColor(note)}`;
         element.dataset.noteId = note.id;
+        element.dataset.testid = 'note';
         this.stage.appendChild(element);
         this.elements.set(note.id, element);
       }
 
-      if (!element.classList.contains(note.color)) {
+      const color = noteColor(note);
+      if (!element.classList.contains(color)) {
         element.classList.remove('c1', 'c2', 'c3', 'c4');
-        element.classList.add(note.color);
+        element.classList.add(color);
       }
 
-      if (element.textContent !== note.text && !element.classList.contains('editing')) {
-        element.textContent = note.text;
+      const text = noteDisplayText(note);
+      if (element.textContent !== text && !element.classList.contains('editing')) {
+        element.textContent = text;
       }
     }
   }
 
-  render(notes: readonly Note[], view: DiskTransform, viewport: Viewport, editingNoteId: string | null): void {
+  render(
+    notes: readonly Note[],
+    view: DiskTransform,
+    viewport: Viewport,
+    editingNoteId: string | null,
+    selectedNoteId: string | null = null,
+  ): void {
     const occupiedDotCells = new Set<string>();
 
     for (const note of notes) {
       const element = this.requireElement(note.id);
 
       if (note.id === editingNoteId) {
-        element.style.display = '';
-        element.classList.remove('as-dot', 'as-pill-h', 'as-pill-v');
-        element.style.transform = `translate(${viewport.cx}px, ${viewport.cy}px) translate(-50%, -50%) scale(1)`;
-        element.style.opacity = '1';
+        element.style.display = 'none';
         continue;
       }
 
+      element.dataset.noteSelected = note.id === selectedNoteId ? 'true' : 'false';
       const transformed = applyTransform(view, note.position);
       const radius2 = abs2(transformed);
       const scale = 1 - radius2;
@@ -73,6 +88,7 @@ export class NoteLayer {
       if (inRect) {
         if (scale > SCALE_TEXT) {
           element.classList.remove('as-dot', 'as-pill-h', 'as-pill-v');
+          element.dataset.noteRender = 'text';
           element.style.transform = `translate(${projected.x}px, ${projected.y}px) translate(-50%, -50%) scale(${scale})`;
           element.style.opacity = String(Math.min(1, scale * 3));
         } else {
@@ -85,6 +101,7 @@ export class NoteLayer {
           occupiedDotCells.add(dotCell);
           element.classList.add('as-dot');
           element.classList.remove('as-pill-h', 'as-pill-v');
+          element.dataset.noteRender = 'dot';
           element.style.transform = `translate(${projected.x}px, ${projected.y}px) translate(-50%, -50%)`;
           element.style.opacity = String(DOT_OPACITY);
         }
@@ -101,7 +118,7 @@ export class NoteLayer {
       return null;
     }
 
-    return target.closest<HTMLElement>('.item')?.dataset.noteId ?? null;
+    return target.closest<HTMLElement>('[data-testid="note"]')?.dataset.noteId ?? null;
   }
 
   getElement(noteId: string): HTMLDivElement | null {
@@ -132,6 +149,7 @@ export class NoteLayer {
     const edgeY = viewport.cy + t * dy;
 
     element.classList.remove('as-dot');
+    element.dataset.noteRender = 'edge';
     if (ty < tx) {
       element.classList.add('as-pill-h');
       element.classList.remove('as-pill-v');

@@ -1,4 +1,4 @@
-import { Hand, LocateFixed, Move, Pencil, Redo2, Spline, Undo2, ZoomIn } from 'lucide-react';
+import { Hand, LocateFixed, Move, Redo2, Spline, Type, Undo2, ZoomIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ArrowSelection } from '../core/arrowSelection';
 import type { CoordinateTarget } from '../core/coordinateIndicator';
@@ -159,8 +159,8 @@ export const HyperbolicStage = () => {
             type="button"
             onClick={() => changeMode('edit')}
           >
-            <Pencil size={14} aria-hidden />
-            Edit
+            <Type size={14} aria-hidden />
+            Text
           </button>
           <button
             data-mode="move"

@@ -5,14 +5,14 @@ test('renders the hyperbolic canvas shell', async ({ page }) => {
 
   await expect(page.locator('#stage')).toBeVisible();
   await expect(page.getByTestId('note').first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Text' })).toBeVisible();
   await expect(page.getByTestId('coordinate-indicator')).toBeHidden();
 });
 
 test('edits the active note through the React overlay', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: 'Text' }).click();
   await page.getByTestId('note').and(page.locator('[data-note-render="text"]')).last().click();
 
   await expect(page.getByTestId('note-editor')).toBeVisible();
@@ -65,7 +65,7 @@ test('creates a note from edit mode after distant panning', async ({ page }) => 
     await page.mouse.up();
   }
 
-  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: 'Text' }).click();
   const snapPoint = await findSnapPoint(page, box);
   await page.mouse.click(snapPoint.x, snapPoint.y);
 

@@ -78,7 +78,7 @@ const DEFAULT_TILING: HyperbolicTilingOptions = {
   maxRadius: 0.99985,
   maxTiles: 28000,
   includeTileCenters: true,
-  edgeSubdivisions: 4,
+  edgeSubdivisions: 6,
 };
 
 export const generateHyperbolicTiling = (

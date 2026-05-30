@@ -54,8 +54,7 @@ export class GridRenderer {
     maxRadius2: number,
   ): void {
     this.context.fillStyle = color;
-    this.context.globalAlpha = alpha;
-    this.context.beginPath();
+    const edgeRadius = Math.sqrt(maxRadius2);
 
     for (const gridPoint of gridPoints) {
       const transformed = applyTransform(view, gridPoint.point);
@@ -74,12 +73,14 @@ export class GridRenderer {
         continue;
       }
 
+      const fade = 1 - Math.sqrt(radius2) / edgeRadius;
       const size = Math.max(GRID_MIN_SIZE, (1 - radius2) * GRID_SIZE_FACTOR) * sizeMultiplier;
-      this.context.moveTo(projected.x + size, projected.y);
+      this.context.globalAlpha = alpha * fade * (2 - fade);
+      this.context.beginPath();
       this.context.arc(projected.x, projected.y, size, 0, Math.PI * 2);
+      this.context.fill();
     }
 
-    this.context.fill();
     this.context.globalAlpha = 1;
   }
 }

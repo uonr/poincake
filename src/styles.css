@@ -104,6 +104,7 @@ body {
   overflow: hidden;
   position: relative;
   touch-action: none;
+  user-select: none;
 }
 
 #stage canvas {
@@ -297,6 +298,7 @@ body {
   min-height: 96px;
   outline: none;
   resize: vertical;
+  user-select: text;
   width: 100%;
 }
 
@@ -426,6 +428,7 @@ body {
   font-size: 14px;
   outline: none;
   padding: 5px 8px;
+  user-select: text;
   width: 100%;
 }
 

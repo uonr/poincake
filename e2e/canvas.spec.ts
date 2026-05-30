@@ -15,11 +15,13 @@ test('edits the active note through the React overlay', async ({ page }) => {
   await page.getByTestId('note').and(page.locator('[data-note-render="text"]')).last().click();
 
   await expect(page.getByTestId('note-editor')).toBeVisible();
-  await page.getByLabel('Note text').fill('Edited note');
+  await page.getByLabel('Note text').fill('Edited\nnote');
   await page.getByRole('button', { name: 'Done' }).click();
 
   await expect(page.getByTestId('note-editor')).toBeHidden();
-  await expect(page.getByTestId('note').filter({ hasText: 'Edited note' })).toBeVisible();
+  const editedNote = page.getByTestId('note').filter({ hasText: 'Edited' });
+  await expect(editedNote).toBeVisible();
+  await expect(editedNote).toHaveCSS('white-space', 'pre-wrap');
 });
 
 test('creates a note from edit mode after distant panning', async ({ page }) => {

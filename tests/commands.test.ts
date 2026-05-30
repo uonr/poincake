@@ -6,13 +6,18 @@ import { applyWorldCommand, applyWorldPatch } from '../src/model/commands';
 import type { Note } from '../src/model/note';
 import { HyperbolicWorldState } from '../src/model/worldState';
 import { projectDiskPoint, type Viewport } from '../src/render/viewport';
+import { anchorAt } from './support';
 
 const createWorld = () => {
   const tiling = generateHyperbolicTiling({ maxRadius: 0.75, maxTiles: 80 });
   const grid = new AnchoredGrid(tiling);
+  const anchor = anchorAt(tiling, 0);
+  if (!anchor) {
+    throw new Error('Test tiling did not generate any grid anchors.');
+  }
   const note: Note = {
     id: 'note-1',
-    position: [0.1, 0.2],
+    anchor,
     content: {
       kind: 'plain-text',
       text: 'Before',
@@ -30,9 +35,13 @@ const createWorld = () => {
 describe('world commands', () => {
   it('creates notes and produces a reversible patch', () => {
     const world = createWorld();
+    const anchor = anchorAt(world.grid.tiling, 1);
+    if (!anchor) {
+      throw new Error('Test tiling did not generate a second grid anchor.');
+    }
     const note: Note = {
       id: 'note-2',
-      position: [0.25, -0.2],
+      anchor,
       content: {
         kind: 'plain-text',
         text: 'Created',
@@ -113,15 +122,19 @@ describe('world commands', () => {
 
   it('moves and deletes notes without exposing mutation details to callers', () => {
     const world = createWorld();
+    const anchor = anchorAt(world.grid.tiling, 1);
+    if (!anchor) {
+      throw new Error('Test tiling did not generate a second grid anchor.');
+    }
 
     applyWorldCommand(world, {
       type: 'move-note',
       noteId: 'note-1',
-      position: [0.3, -0.1],
+      anchor,
       updatedAt: 3,
     });
 
-    expect(world.notes[0]?.position).toEqual([0.3, -0.1]);
+    expect(world.notes[0]?.anchor).toEqual(anchor);
     expect(world.notes[0]?.updatedAt).toBe(3);
 
     applyWorldCommand(world, {
@@ -134,16 +147,21 @@ describe('world commands', () => {
 
   it('does not produce patches for missing notes', () => {
     const world = createWorld();
+    const originalAnchor = world.notes[0]?.anchor;
+    const anchor = anchorAt(world.grid.tiling, 1);
+    if (!anchor) {
+      throw new Error('Test tiling did not generate a second grid anchor.');
+    }
 
     const result = applyWorldCommand(world, {
       type: 'move-note',
       noteId: 'missing-note',
-      position: [0.3, -0.1],
+      anchor,
       updatedAt: 3,
     });
 
     expect(result.patch).toBeUndefined();
-    expect(world.notes[0]?.position).toEqual([0.1, 0.2]);
+    expect(world.notes[0]?.anchor).toEqual(originalAnchor);
   });
 
   it('applies command patches forward and backward without whole-world snapshots', () => {
@@ -201,7 +219,9 @@ describe('world commands', () => {
     const world = createWorld();
     const transientPoint = [0.2, -0.1] as const;
     const transform = transformFromPointPair([0.4, 0.1], [0, 0]);
-    const expectedNotePosition = applyTransform(transform, world.notes[0]?.position ?? [0, 0]);
+    const noteAnchor = world.notes[0]?.anchor;
+    const notePosition = noteAnchor ? world.grid.worldPointForAnchor(noteAnchor) : null;
+    const expectedNotePosition = applyTransform(transform, notePosition ?? [0, 0]);
     const expectedHomePosition = applyTransform(transform, world.home);
     const expectedTransientPoint = applyTransform(transform, transientPoint);
     const gridPoint = world.grid.tiling.coarseGridPoints[0];
@@ -237,8 +257,10 @@ describe('world commands', () => {
       viewport,
     );
 
-    expect(world.notes[0]?.position[0]).toBeCloseTo(expectedNotePosition[0], 10);
-    expect(world.notes[0]?.position[1]).toBeCloseTo(expectedNotePosition[1], 10);
+    const actualNotePosition = noteAnchor ? world.grid.worldPointForAnchor(noteAnchor) : null;
+    expect(world.notes[0]?.anchor).toEqual(noteAnchor);
+    expect(actualNotePosition?.[0]).toBeCloseTo(expectedNotePosition[0], 10);
+    expect(actualNotePosition?.[1]).toBeCloseTo(expectedNotePosition[1], 10);
     expect(world.home[0]).toBeCloseTo(expectedHomePosition[0], 10);
     expect(world.home[1]).toBeCloseTo(expectedHomePosition[1], 10);
     expect(result.transientPoints?.[0]?.[0]).toBeCloseTo(expectedTransientPoint[0], 10);

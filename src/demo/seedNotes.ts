@@ -219,7 +219,7 @@ export const seedNotes = (
 
     notes.push({
       id: `note-${i}`,
-      position: point.point,
+      anchor: point.anchor,
       content: {
         kind: 'plain-text',
         text: WORDS[Math.floor(random() * WORDS.length)] ?? 'Note',

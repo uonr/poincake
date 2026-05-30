@@ -4,13 +4,18 @@ import { generateHyperbolicTiling } from '../src/grid/hyperbolicTiling';
 import { WorldHistory } from '../src/model/history';
 import type { Note } from '../src/model/note';
 import { HyperbolicWorldState } from '../src/model/worldState';
+import { anchorAt } from './support';
 
 const createWorld = () => {
   const tiling = generateHyperbolicTiling({ maxRadius: 0.75, maxTiles: 80 });
   const grid = new AnchoredGrid(tiling);
+  const anchor = anchorAt(tiling, 0);
+  if (!anchor) {
+    throw new Error('Test tiling did not generate any grid anchors.');
+  }
   const note: Note = {
     id: 'note-1',
-    position: [0.1, 0.2],
+    anchor,
     content: {
       kind: 'plain-text',
       text: 'Before',
@@ -90,11 +95,11 @@ describe('world history', () => {
       type: 'move-note',
       noteId: 'note-1',
       before: {
-        position: [0.1, 0.2],
+        anchor: anchorAt(world.grid.tiling, 0) ?? note.anchor,
         updatedAt: 1,
       },
       after: {
-        position: [0.3, -0.1],
+        anchor: anchorAt(world.grid.tiling, 1) ?? note.anchor,
         updatedAt: 3,
       },
     });

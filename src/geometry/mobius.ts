@@ -1,5 +1,5 @@
 import { abs2, add, type Complex, conjugate, divide, multiply, negate, scale } from './complex';
-import type { DiskPoint } from './disk';
+import { assertInsideUnitDisk, type DiskPoint } from './disk';
 
 export type DiskTransform = Readonly<{
   a: Complex;
@@ -28,6 +28,9 @@ export const invertTransform = (transform: DiskTransform): DiskTransform => ({
 });
 
 export const transformFromPointPair = (p: DiskPoint, q: DiskPoint): DiskTransform => {
+  assertInsideUnitDisk(p, 'Transform source point');
+  assertInsideUnitDisk(q, 'Transform target point');
+
   const pScale = 1 / Math.sqrt(Math.max(1e-12, 1 - abs2(p)));
   const translateP: DiskTransform = {
     a: [pScale, 0],

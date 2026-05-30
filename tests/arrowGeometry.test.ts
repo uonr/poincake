@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { identityTransform } from '../src/geometry/mobius';
-import type { Arrow } from '../src/model/arrow';
-import { arrowHitTest, arrowMidpoint, projectArrowGeodesic } from '../src/render/arrowGeometry';
+import {
+  type ArrowGeometry,
+  arrowHitTest,
+  arrowMidpoint,
+  projectArrowGeodesic,
+} from '../src/render/arrowGeometry';
 import type { Viewport } from '../src/render/viewport';
 
 const viewport: Viewport = {
@@ -15,15 +19,11 @@ const viewport: Viewport = {
   zoom: 1,
 };
 
-const arrow: Arrow = {
+const arrow: ArrowGeometry = {
   id: 'arrow-0',
   // A diameter through the origin projects to a horizontal screen segment at y=300.
   from: [0.2, 0],
   to: [-0.2, 0],
-  label: '',
-  appearance: { color: 'c1' },
-  createdAt: 1,
-  updatedAt: 1,
 };
 
 describe('arrow geometry', () => {

@@ -1,4 +1,4 @@
-import type { DiskPoint } from '../geometry/disk';
+import type { GridAnchor } from '../grid/tilingAddress';
 
 export type NoteColor = 'c1' | 'c2' | 'c3' | 'c4';
 export type NoteId = string;
@@ -14,7 +14,7 @@ export type NoteAppearance = Readonly<{
 
 export type Note = {
   id: NoteId;
-  position: DiskPoint;
+  anchor: GridAnchor;
   content: NoteContent;
   appearance: NoteAppearance;
   createdAt: number;

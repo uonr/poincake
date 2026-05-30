@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { abs2 } from '../src/geometry/complex';
+import { reflectInGeodesic } from '../src/geometry/hyperbolic';
 import {
   applyTransform,
   identityTransform,
@@ -30,5 +31,16 @@ describe('disk transforms', () => {
 
     expect(restored[0]).toBeCloseTo(point[0], 10);
     expect(restored[1]).toBeCloseTo(point[1], 10);
+  });
+
+  it('rejects transforms constructed from boundary or outside points', () => {
+    expect(() => transformFromPointPair([1, 0], [0, 0])).toThrow(/inside the unit disk/);
+    expect(() => transformFromPointPair([0, 0], [1.01, 0])).toThrow(/inside the unit disk/);
+  });
+
+  it('rejects a reflection axis that cannot determine a geodesic', () => {
+    expect(() => reflectInGeodesic([0.2, 0.1], [0, 0], [0, 0])).toThrow(
+      /requires two distinct disk points/,
+    );
   });
 });

@@ -11,16 +11,17 @@ import {
   transformFromPointPair,
 } from '../geometry/mobius';
 import type { AnchoredGrid } from '../grid/anchoredGrid';
+import { type GridAnchor, gridAnchorsEqual } from '../grid/tilingAddress';
 import type { Arrow } from '../model/arrow';
 import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
 import { type HistoryState, WorldHistory } from '../model/history';
 import { type Note, type NoteColor, noteColor, noteDisplayText } from '../model/note';
 import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
 import { HyperbolicWorldState } from '../model/worldState';
-import { arrowHitTest, arrowMidpoint } from '../render/arrowGeometry';
-import { type ArrowDraft, ArrowLayer } from '../render/arrowLayer';
+import { type ArrowGeometry, arrowHitTest, arrowMidpoint } from '../render/arrowGeometry';
+import { type ArrowDraft, ArrowLayer, type RenderedArrow } from '../render/arrowLayer';
 import { GridRenderer } from '../render/gridRenderer';
-import { NoteLayer } from '../render/noteLayer';
+import { NoteLayer, type RenderedNote } from '../render/noteLayer';
 import {
   createViewportFromRect,
   fitDiskZoom,
@@ -42,6 +43,11 @@ type PointerMode =
   | 'arrow-draw';
 
 const ARROW_DEFAULT_COLOR: NoteColor = 'c1';
+
+type AnchoredPoint = Readonly<{
+  anchor: GridAnchor;
+  point: DiskPoint;
+}>;
 
 export type HyperbolicCanvasControllerOptions = Readonly<{
   stage: HTMLElement;
@@ -86,8 +92,8 @@ export class HyperbolicCanvasController {
   private pendingNoteId: string | null = null;
   private nextNoteId: number;
   private nextArrowId = 0;
-  private arrowFrom: DiskPoint | null = null;
-  private draftArrowTo: DiskPoint | null = null;
+  private arrowFrom: AnchoredPoint | null = null;
+  private draftArrowTo: AnchoredPoint | null = null;
   private pendingArrowHitId: string | null = null;
   private selectedArrowId: string | null = null;
   private flying = false;
@@ -226,7 +232,7 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    this.flyTo(note.position);
+    this.flyTo(this.notePoint(note));
   }
 
   deleteSelectedNote(): void {
@@ -574,7 +580,7 @@ export class HyperbolicCanvasController {
         {
           type: 'move-note',
           noteId: this.dragNoteId,
-          position: snappedGridPoint.point,
+          anchor: snappedGridPoint.anchor,
           updatedAt: Date.now(),
         },
         { recordHistory: false },
@@ -593,7 +599,7 @@ export class HyperbolicCanvasController {
     }
 
     return {
-      position: note.position,
+      anchor: note.anchor,
       updatedAt: note.updatedAt,
     };
   }
@@ -604,7 +610,7 @@ export class HyperbolicCanvasController {
     }
 
     const after = this.currentMoveSnapshot(this.dragNoteId);
-    if (!after || diskPointsAlmostEqual(this.dragMoveBefore.position, after.position)) {
+    if (!after || gridAnchorsEqual(this.dragMoveBefore.anchor, after.anchor)) {
       return;
     }
 
@@ -660,6 +666,10 @@ export class HyperbolicCanvasController {
     }
 
     return this.world.notes.find((candidate) => candidate.id === this.selectedNoteId) ?? null;
+  }
+
+  private notePoint(note: Note): DiskPoint {
+    return this.world.grid.worldPointForAnchor(note.anchor);
   }
 
   private selectNote(noteId: string | null): void {
@@ -731,9 +741,9 @@ export class HyperbolicCanvasController {
           );
           if (snapped) {
             const existing = this.world.notes.find((n) =>
-              diskPointsAlmostEqual(n.position, snapped.point),
+              gridAnchorsEqual(n.anchor, snapped.anchor),
             );
-            const target = existing ?? this.createNote(snapped.point);
+            const target = existing ?? this.createNote(snapped.anchor);
             this.selectNote(target.id);
             this.startEdit(target);
             this.resetDragState();
@@ -806,7 +816,7 @@ export class HyperbolicCanvasController {
     this.editingVisible = false;
     this.options.onEditingSessionChange?.(null);
     this.emitSelection();
-    this.flyTo(note.position, 380, () => {
+    this.flyTo(this.notePoint(note), 380, () => {
       if (this.editingNoteId !== note.id) {
         return;
       }
@@ -844,11 +854,12 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    const transformed = applyTransform(this.view, note.position);
+    const point = this.notePoint(note);
+    const transformed = applyTransform(this.view, point);
     const projected = projectDiskPoint(transformed, viewport);
     this.options.onEditingSessionChange({
       noteId: note.id,
-      anchor: note.position,
+      anchor: point,
       draft: {
         text: noteDisplayText(note),
         color: noteColor(note),
@@ -883,10 +894,10 @@ export class HyperbolicCanvasController {
       this.view,
       viewport,
     );
-    this.arrowFrom = snapped ? snapped.point : null;
+    this.arrowFrom = snapped ? { anchor: snapped.anchor, point: snapped.point } : null;
     this.draftArrowTo = this.arrowFrom;
     this.pendingArrowHitId = arrowHitTest(
-      this.world.arrows,
+      this.arrowGeometries(),
       this.view,
       viewport,
       event.clientX - viewport.left,
@@ -916,7 +927,7 @@ export class HyperbolicCanvasController {
       viewport,
     );
     if (snapped) {
-      this.draftArrowTo = snapped.point;
+      this.draftArrowTo = { anchor: snapped.anchor, point: snapped.point };
     }
     this.updateSnapCursor(event.clientX, event.clientY);
     this.requestRender();
@@ -939,8 +950,8 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    if (from && to && !diskPointsAlmostEqual(from, to)) {
-      this.createArrow(from, to);
+    if (from && to && !gridAnchorsEqual(from.anchor, to.anchor)) {
+      this.createArrow(from.anchor, to.anchor);
     }
   }
 
@@ -954,7 +965,7 @@ export class HyperbolicCanvasController {
     this.pendingArrowHitId = null;
   }
 
-  private createArrow(from: DiskPoint, to: DiskPoint): void {
+  private createArrow(from: GridAnchor, to: GridAnchor): void {
     const now = Date.now();
     const arrow: Arrow = {
       id: `arrow-${this.nextArrowId++}`,
@@ -977,6 +988,25 @@ export class HyperbolicCanvasController {
       return null;
     }
     return this.world.arrows.find((candidate) => candidate.id === this.selectedArrowId) ?? null;
+  }
+
+  private arrowGeometry(arrow: Arrow): ArrowGeometry {
+    return {
+      id: arrow.id,
+      from: this.world.grid.worldPointForAnchor(arrow.from),
+      to: this.world.grid.worldPointForAnchor(arrow.to),
+    };
+  }
+
+  private arrowGeometries(): ArrowGeometry[] {
+    return this.world.arrows.map((arrow) => this.arrowGeometry(arrow));
+  }
+
+  private renderedArrows(): RenderedArrow[] {
+    return this.world.arrows.map((arrow) => {
+      const geometry = this.arrowGeometry(arrow);
+      return { arrow, from: geometry.from, to: geometry.to };
+    });
   }
 
   private selectArrow(arrowId: string | null): void {
@@ -1039,11 +1069,11 @@ export class HyperbolicCanvasController {
     this.requestRender();
   }
 
-  private createNote(position: DiskPoint): Note {
+  private createNote(anchor: GridAnchor): Note {
     const now = Date.now();
     const note: Note = {
       id: `note-${this.nextNoteId++}`,
-      position,
+      anchor,
       content: {
         kind: 'plain-text',
         text: '',
@@ -1076,19 +1106,29 @@ export class HyperbolicCanvasController {
     this.flying = true;
 
     const step = (): void => {
-      const t = Math.min(1, (performance.now() - startTime) / ms);
-      const eased = 1 - (1 - t) ** 3;
-      const position: DiskPoint = [startPosition[0] * (1 - eased), startPosition[1] * (1 - eased)];
-      this.view = transformFromPointPair(target, position);
-      this.render();
-
-      if (t < 1) {
-        requestAnimationFrame(step);
-      } else {
-        this.flying = false;
-        this.reanchorIfNeeded();
+      // A throw here (e.g. a degenerate target) must not leave `flying` stuck true,
+      // which would wedge every later interaction. Reset it before re-throwing.
+      try {
+        const t = Math.min(1, (performance.now() - startTime) / ms);
+        const eased = 1 - (1 - t) ** 3;
+        const position: DiskPoint = [
+          startPosition[0] * (1 - eased),
+          startPosition[1] * (1 - eased),
+        ];
+        this.view = transformFromPointPair(target, position);
         this.render();
-        onDone?.();
+
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          this.flying = false;
+          this.reanchorIfNeeded();
+          this.render();
+          onDone?.();
+        }
+      } catch (error) {
+        this.flying = false;
+        throw error;
       }
     };
 
@@ -1106,7 +1146,8 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    const midpoint = arrowMidpoint(arrow.from, arrow.to, this.view, viewport);
+    const geometry = this.arrowGeometry(arrow);
+    const midpoint = arrowMidpoint(geometry.from, geometry.to, this.view, viewport);
     this.options.onArrowSelectionChange({
       arrowId: arrow.id,
       label: arrow.label,
@@ -1122,14 +1163,18 @@ export class HyperbolicCanvasController {
     if (this.pointerMode !== 'arrow-draw' || !this.arrowFrom || !this.draftArrowTo) {
       return null;
     }
-    if (diskPointsAlmostEqual(this.arrowFrom, this.draftArrowTo)) {
+    if (gridAnchorsEqual(this.arrowFrom.anchor, this.draftArrowTo.anchor)) {
       return null;
     }
     return {
-      from: this.arrowFrom,
-      to: this.draftArrowTo,
+      from: this.arrowFrom.point,
+      to: this.draftArrowTo.point,
       color: ARROW_DEFAULT_COLOR,
     };
+  }
+
+  private renderedNotes(): RenderedNote[] {
+    return this.world.notes.map((note) => ({ note, point: this.notePoint(note) }));
   }
 
   private requestRender(): void {
@@ -1148,7 +1193,7 @@ export class HyperbolicCanvasController {
 
     this.gridRenderer.draw(this.world.grid, this.view, viewport, this.gridColor);
     this.arrowLayer.draw(
-      this.world.arrows,
+      this.renderedArrows(),
       this.view,
       viewport,
       (color) => this.arrowColors[color],
@@ -1160,7 +1205,7 @@ export class HyperbolicCanvasController {
     );
 
     this.noteLayer.render(
-      this.world.notes,
+      this.renderedNotes(),
       this.view,
       viewport,
       this.editingVisible ? this.editingNoteId : null,
@@ -1169,9 +1214,3 @@ export class HyperbolicCanvasController {
     this.emitEditingSession(viewport);
   }
 }
-
-const diskPointsAlmostEqual = (a: DiskPoint, b: DiskPoint): boolean => {
-  const dx = a[0] - b[0];
-  const dy = a[1] - b[1];
-  return dx * dx + dy * dy < 1e-18;
-};

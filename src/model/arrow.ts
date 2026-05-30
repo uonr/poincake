@@ -1,4 +1,4 @@
-import type { DiskPoint } from '../geometry/disk';
+import type { GridAnchor } from '../grid/tilingAddress';
 import type { NoteColor } from './note';
 
 export type ArrowId = string;
@@ -7,12 +7,12 @@ export type ArrowAppearance = Readonly<{
   color: NoteColor;
 }>;
 
-// An arrow is anchored to two world-frame grid points; like a note's position,
-// both endpoints are carried through reanchoring Möbius transforms.
+// Arrows persist the combinatorial anchors they connect; Poincare disk coordinates
+// are only a chart-dependent rendering detail.
 export type Arrow = {
   id: ArrowId;
-  from: DiskPoint;
-  to: DiskPoint;
+  from: GridAnchor;
+  to: GridAnchor;
   label: string;
   appearance: ArrowAppearance;
   createdAt: number;

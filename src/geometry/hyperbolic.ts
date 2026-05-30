@@ -95,6 +95,10 @@ const normalizeAngle = (angle: number): number => {
 const reflectInDiameter = (point: DiskPoint, a: DiskPoint, b: DiskPoint): DiskPoint => {
   const direction = abs2(a) > 1e-12 ? a : b;
   const length = Math.sqrt(abs2(direction));
+  if (length < 1e-12) {
+    throw new Error('Reflecting in a geodesic requires two distinct disk points.');
+  }
+
   const ux = direction[0] / length;
   const uy = direction[1] / length;
   const dot = point[0] * ux + point[1] * uy;

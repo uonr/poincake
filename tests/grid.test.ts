@@ -1,14 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { abs2 } from '../src/geometry/complex';
+import type { DiskPoint } from '../src/geometry/disk';
 import {
   applyTransform,
+  composeTransforms,
   identityTransform,
   invertTransform,
   transformFromPointPair,
 } from '../src/geometry/mobius';
-import { AnchoredGrid } from '../src/grid/anchoredGrid';
+import { AnchoredGrid, type GridChartSnapshot } from '../src/grid/anchoredGrid';
 import { generateHyperbolicTiling } from '../src/grid/hyperbolicTiling';
+import { canonicalizeFromScene } from '../src/grid/tileCanonical';
+import { resolveAnchorScene, tileSymmetryTransformForWalk } from '../src/grid/tileWalk';
+import { gridAnchor, gridAnchorKey, ROOT_CHART_ID, rootWalk } from '../src/grid/tilingAddress';
 import { projectDiskPoint, type Viewport } from '../src/render/viewport';
+
+const resolveChartSnapshot = (
+  charts: readonly GridChartSnapshot[],
+  chartId: string,
+): ReturnType<typeof tileSymmetryTransformForWalk> => {
+  const chart = charts.find((candidate) => candidate.id === chartId);
+  if (!chart?.parentId) {
+    return identityTransform;
+  }
+  return composeTransforms(
+    resolveChartSnapshot(charts, chart.parentId),
+    tileSymmetryTransformForWalk(chart.transition),
+  );
+};
 
 describe('hyperbolic tiling', () => {
   it('generates snap points inside the configured boundary', () => {
@@ -20,6 +39,49 @@ describe('hyperbolic tiling', () => {
     for (const gridPoint of tiling.coarseGridPoints) {
       expect(abs2(gridPoint.point)).toBeLessThanOrEqual(maxRadius * maxRadius);
     }
+  });
+
+  it('rejects tiling radii that do not stay inside the Poincare disk', () => {
+    expect(() => generateHyperbolicTiling({ maxRadius: 0 })).toThrow(/inside the unit disk/);
+    expect(() => generateHyperbolicTiling({ maxRadius: 1 })).toThrow(/inside the unit disk/);
+    expect(() => generateHyperbolicTiling({ maxRadius: 1.1 })).toThrow(/inside the unit disk/);
+  });
+
+  it('keeps shared grid points on one canonical identity', () => {
+    const tiling = generateHyperbolicTiling({ maxRadius: 0.75, maxTiles: 8 });
+
+    // Canonicalizing each grid point round-trips to its own coordinate, and any
+    // two grid points that canonicalize to the same anchor are the same point —
+    // a vertex shared by several tiles has exactly one identity.
+    const byKey = new Map<string, DiskPoint>();
+    for (const gridPoint of tiling.coarseGridPoints) {
+      const anchor = canonicalizeFromScene(gridPoint.point, tiling.edgeSubdivisions);
+      const resolved = resolveAnchorScene(anchor);
+      expect(resolved[0]).toBeCloseTo(gridPoint.point[0], 9);
+      expect(resolved[1]).toBeCloseTo(gridPoint.point[1], 9);
+
+      const previous = byKey.get(gridAnchorKey(anchor));
+      if (previous) {
+        expect(previous[0]).toBeCloseTo(gridPoint.point[0], 9);
+        expect(previous[1]).toBeCloseTo(gridPoint.point[1], 9);
+      } else {
+        byKey.set(gridAnchorKey(anchor), gridPoint.point);
+      }
+    }
+    expect(byKey.size).toBeGreaterThan(0);
+  });
+
+  it('resolves a walk that immediately backtracks to its root tile', () => {
+    // [0, 0] reflects across edge 0 and straight back: a non-canonical walk that
+    // must still resolve to the same point the canonical root walk does.
+    const rootCenter = gridAnchor(rootWalk, { kind: 'center' });
+    const backtracked = gridAnchor([0, 0], { kind: 'center' });
+
+    const canonicalPoint = resolveAnchorScene(rootCenter);
+    const backtrackedPoint = resolveAnchorScene(backtracked);
+
+    expect(backtrackedPoint[0]).toBeCloseTo(canonicalPoint[0], 10);
+    expect(backtrackedPoint[1]).toBeCloseTo(canonicalPoint[1], 10);
   });
 
   it('reaches close to the edge without using a Euclidean lattice', () => {
@@ -145,6 +207,136 @@ describe('hyperbolic tiling', () => {
     const view = grid.visiblePoints(identityTransform, 1);
     const viewCenter = applyTransform(invertTransform(view.transform), [0, 0]);
     expect(abs2(viewCenter)).toBeLessThan(0.7 * 0.7);
+  });
+
+  it('keeps anchor identity stable when reanchoring absorbs tiling symmetries', () => {
+    const tiling = generateHyperbolicTiling();
+    const grid = new AnchoredGrid(tiling);
+    const near = tiling.coarseGridPoints.find((candidate) => abs2(candidate.point) < 0.2 * 0.2);
+    const anchor = near && canonicalizeFromScene(near.point, tiling.edgeSubdivisions);
+    const panStep = transformFromPointPair([0, 0], [0, 0.5]);
+
+    expect(anchor).toBeDefined();
+    if (!anchor) {
+      return;
+    }
+
+    let expected = grid.worldPointForAnchor(anchor);
+
+    for (let i = 0; i < 20; i += 1) {
+      expected = applyTransform(panStep, expected);
+      grid.reanchor(panStep);
+    }
+
+    const actual = grid.worldPointForAnchor(anchor);
+    expect(actual[0]).toBeCloseTo(expected[0], 10);
+    expect(actual[1]).toBeCloseTo(expected[1], 10);
+  });
+
+  it('snaps to anchors that resolve back to the clicked point after distant reanchors', () => {
+    const tiling = generateHyperbolicTiling();
+    const grid = new AnchoredGrid(tiling);
+    // A deep but in-envelope pan: ~14 reflections from the origin, where the fold
+    // round-trips to float64 precision. (Far beyond ~17 the fold degrades; see the
+    // precision-envelope note in tileCanonical.)
+    const panStep = transformFromPointPair([0, 0], [0, 0.3]);
+    const viewport: Viewport = {
+      width: 800,
+      height: 600,
+      left: 0,
+      top: 0,
+      cx: 400,
+      cy: 300,
+      radius: 500,
+      zoom: 1,
+    };
+
+    for (let i = 0; i < 10; i += 1) {
+      grid.reanchor(panStep);
+    }
+
+    const visible = grid.visiblePoints(identityTransform, 0.5);
+    const target = visible.points.find(
+      (candidate) => abs2(applyTransform(visible.transform, candidate.point)) < 0.1 * 0.1,
+    );
+
+    expect(target).toBeDefined();
+    if (!target) {
+      return;
+    }
+
+    const clicked = applyTransform(visible.transform, target.point);
+    const projected = projectDiskPoint(clicked, viewport);
+    const snapped = grid.snapScreenPoint(projected.x, projected.y, identityTransform, viewport);
+
+    expect(snapped).toBeDefined();
+    if (!snapped) {
+      return;
+    }
+
+    const resolved = grid.worldPointForAnchor(snapped.anchor);
+    expect(resolved[0]).toBeCloseTo(snapped.point[0], 10);
+    expect(resolved[1]).toBeCloseTo(snapped.point[1], 10);
+    // After distant reanchoring the anchor remains shallow and records the chart
+    // that gives that local address its scene meaning.
+    expect(snapped.anchor.chartId).not.toBe(ROOT_CHART_ID);
+    expect(snapped.anchor.walk.length).toBeLessThan(8);
+  });
+
+  it('resolves a chart-relative anchor on a fresh grid when its chart graph is restored', () => {
+    const tiling = generateHyperbolicTiling();
+    const panned = new AnchoredGrid(tiling);
+    const panStep = transformFromPointPair([0, 0], [0, 0.3]);
+    const viewport: Viewport = {
+      width: 800,
+      height: 600,
+      left: 0,
+      top: 0,
+      cx: 400,
+      cy: 300,
+      radius: 500,
+      zoom: 1,
+    };
+
+    for (let i = 0; i < 10; i += 1) {
+      panned.reanchor(panStep);
+    }
+
+    const visible = panned.visiblePoints(identityTransform, 0.5);
+    const target = visible.points.find(
+      (candidate) => abs2(applyTransform(visible.transform, candidate.point)) < 0.1 * 0.1,
+    );
+    expect(target).toBeDefined();
+    if (!target) {
+      return;
+    }
+    const clicked = applyTransform(visible.transform, target.point);
+    const snapped = panned.snapScreenPoint(
+      projectDiskPoint(clicked, viewport).x,
+      projectDiskPoint(clicked, viewport).y,
+      identityTransform,
+      viewport,
+    );
+    expect(snapped).toBeDefined();
+    if (!snapped) {
+      return;
+    }
+    expect(snapped.anchor.chartId).not.toBe(ROOT_CHART_ID);
+    expect(snapped.anchor.walk.length).toBeLessThan(8);
+
+    // A reload must persist the chart graph alongside notes; the note anchor itself
+    // stays local instead of replaying the navigation as a deep root walk.
+    const charts = panned.chartSnapshots();
+    const fresh = new AnchoredGrid(tiling);
+    fresh.restoreChartSnapshots(charts);
+    const resolved = fresh.worldPointForAnchor(snapped.anchor);
+    const direct = applyTransform(
+      resolveChartSnapshot(charts, snapped.anchor.chartId),
+      resolveAnchorScene(snapped.anchor),
+    );
+    expect(resolved[0]).toBeCloseTo(direct[0], 10);
+    expect(resolved[1]).toBeCloseTo(direct[1], 10);
+    expect(abs2(resolved)).toBeLessThan(1);
   });
 
   it('snaps to coarse grid points', () => {

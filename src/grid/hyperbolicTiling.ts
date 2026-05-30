@@ -1,14 +1,10 @@
 import { abs2, type Complex } from '../geometry/complex';
 import type { DiskPoint } from '../geometry/disk';
 import { reflectInGeodesic } from '../geometry/hyperbolic';
-import {
-  applyTransform,
-  composeTransforms,
-  type DiskTransform,
-  invertTransform,
-  transformFromPointPair,
-} from '../geometry/mobius';
+import type { DiskTransform } from '../geometry/mobius';
 import { GridPointSpatialIndex } from './spatialIndex';
+import { hyperbolicEdgeSamples, TILE_P, TILE_Q, tileSymmetryTransformForWalk } from './tileWalk';
+import { edgeIndex, type GridAnchor, gridAnchor, type ReducedWalk } from './tilingAddress';
 
 export type HyperbolicTilingOptions = Readonly<{
   p: number;
@@ -23,10 +19,14 @@ export type GridId = Readonly<{ xi: number; yi: number }>;
 
 export type GridPointLayer = 'coarse';
 
+// Grid points carry their chart-local identity directly. Snapping can then bind
+// that local identity to the current chart without reverse-parsing a near-boundary
+// floating-point scene coordinate.
 export type GridPoint = Readonly<{
   id: GridId;
   layer: GridPointLayer;
   point: DiskPoint;
+  anchor: GridAnchor;
 }>;
 
 const GRID_PRECISION = 1e8;
@@ -41,7 +41,7 @@ export const diskPointToGridId = (point: DiskPoint): GridId => ({
   yi: Math.round(point[1] * GRID_PRECISION),
 });
 
-const gridIdKey = (id: GridId): string => `${id.xi},${id.yi}`;
+export const gridIdKey = (id: GridId): string => `${id.xi},${id.yi}`;
 
 // A tiling symmetry that maps the central base tile onto another tile: `transform`
 // is an orientation-preserving Möbius isometry with `transform([0, 0]) === center`.
@@ -50,6 +50,7 @@ const gridIdKey = (id: GridId): string => `${id.xi},${id.yi}`;
 // points we can re-anchor onto without changing the visible tiling.
 export type AnchorSymmetry = Readonly<{
   center: DiskPoint;
+  walk: ReducedWalk;
   transform: DiskTransform;
 }>;
 
@@ -57,6 +58,9 @@ export type HyperbolicTiling = Readonly<{
   coarseGridPoints: readonly GridPoint[];
   coarseGridIndex: GridPointSpatialIndex;
   anchorSymmetries: readonly AnchorSymmetry[];
+  // Needed to re-canonicalize a snapped scene point into a grid anchor; the edge
+  // subdivision count is part of an edge anchor's identity.
+  edgeSubdivisions: number;
 }>;
 
 // Only tiles within this radius are kept as re-anchor targets. The view-center is
@@ -66,6 +70,7 @@ const ANCHOR_MAX_RADIUS2 = 0.9 * 0.9;
 
 type GridTile = Readonly<{
   id: string;
+  walk: ReducedWalk;
   center: DiskPoint;
   vertices: readonly DiskPoint[];
 }>;
@@ -86,6 +91,8 @@ export const generateHyperbolicTiling = (
 ): HyperbolicTiling => {
   const config = { ...DEFAULT_TILING, ...options };
   validateTiling(config.p, config.q);
+  validateMaxRadius(config.maxRadius);
+  validateMaxTiles(config.maxTiles);
   validateSubdivisions(config.edgeSubdivisions);
 
   const { points, anchorSymmetries } = buildTiling(config);
@@ -95,14 +102,17 @@ export const generateHyperbolicTiling = (
     coarseGridPoints: coarse,
     coarseGridIndex: new GridPointSpatialIndex(coarse),
     anchorSymmetries,
+    edgeSubdivisions: config.edgeSubdivisions,
   };
 };
 
 const buildTiling = (
   config: TilingConfig,
-): { points: Map<string, GridPoint>; anchorSymmetries: AnchorSymmetry[] } => {
+): {
+  points: Map<string, GridPoint>;
+  anchorSymmetries: AnchorSymmetry[];
+} => {
   const maxRadius2 = config.maxRadius * config.maxRadius;
-  const angleOffset = Math.PI / config.p;
   const baseTile = createCenteredTile(config.p, config.q);
   const queue: GridTile[] = [baseTile];
   const seenTiles = new Set([baseTile.id]);
@@ -124,7 +134,8 @@ const buildTiling = (
       if (firstVertex && abs2(tile.center) <= ANCHOR_MAX_RADIUS2) {
         anchorSymmetries.push({
           center: tile.center,
-          transform: tileSymmetryTransform(tile.center, firstVertex, angleOffset),
+          walk: tile.walk,
+          transform: tileSymmetryTransformForWalk(tile.walk),
         });
       }
     }
@@ -149,6 +160,7 @@ const buildTiling = (
       seenTiles.add(key);
       queue.push({
         id: key,
+        walk: gridAnchor([...tile.walk, edgeIndex(i)], { kind: 'center' }).walk,
         center: reflectedCenter,
         vertices: tile.vertices.map((vertex) => reflectInGeodesic(vertex, a, b)),
       });
@@ -156,24 +168,6 @@ const buildTiling = (
   }
 
   return { points: coarseGridPoints, anchorSymmetries };
-};
-
-// Build the orientation-preserving isometry that maps the base tile (centered at
-// the origin, first vertex at `angleOffset`) onto a tile at `center` whose first
-// vertex is `firstVertex`. It is the translation 0 -> center pre-composed with the
-// rotation about the origin that aligns the first vertices, so it lands exactly on
-// a tiling symmetry rather than an arbitrary translation (which would rotate the
-// lattice and make the dots visibly jump on reanchor).
-const tileSymmetryTransform = (
-  center: DiskPoint,
-  firstVertex: DiskPoint,
-  angleOffset: number,
-): DiskTransform => {
-  const toCenter = transformFromPointPair([0, 0], center);
-  const aligned = applyTransform(invertTransform(toCenter), firstVertex);
-  const half = (Math.atan2(aligned[1], aligned[0]) - angleOffset) / 2;
-  const rotation: DiskTransform = { a: [Math.cos(half), Math.sin(half)], b: [0, 0] };
-  return composeTransforms(toCenter, rotation);
 };
 
 // Nearest re-anchor target to `point`, i.e. the tiling symmetry g minimizing
@@ -204,6 +198,7 @@ const createCenteredTile = (p: number, q: number): GridTile => {
 
   return {
     id: tileKey([0, 0]),
+    walk: gridAnchor([], { kind: 'center' }).walk,
     center: [0, 0],
     vertices: Array.from({ length: p }, (_, index): DiskPoint => {
       const angle = angleOffset + (index * Math.PI * 2) / p;
@@ -212,17 +207,33 @@ const createCenteredTile = (p: number, q: number): GridTile => {
   };
 };
 
+// Emit the renderable grid points for a tile. Shared vertices and edges are
+// deduplicated by their quantized id, so each physical point lands in the buffer
+// once regardless of which tile emitted it first.
 const collectTile = (
   tile: GridTile,
   coarseGridPoints: Map<string, GridPoint>,
   config: TilingConfig,
 ): void => {
   if (config.includeTileCenters) {
-    addCoarseGridPoint(tile.center, coarseGridPoints, config);
+    addCoarseGridPoint(
+      tile.center,
+      gridAnchor(tile.walk, { kind: 'center' }),
+      coarseGridPoints,
+      config,
+    );
   }
 
-  for (const vertex of tile.vertices) {
-    addCoarseGridPoint(vertex, coarseGridPoints, config);
+  for (let i = 0; i < tile.vertices.length; i += 1) {
+    const vertex = tile.vertices[i];
+    if (vertex) {
+      addCoarseGridPoint(
+        vertex,
+        gridAnchor(tile.walk, { kind: 'vertex', index: i }),
+        coarseGridPoints,
+        config,
+      );
+    }
   }
 
   for (let i = 0; i < config.p; i += 1) {
@@ -237,24 +248,49 @@ const collectTile = (
       continue;
     }
 
-    for (const point of hyperbolicInterpolateSegments(a, b, config.edgeSubdivisions)) {
-      addCoarseGridPoint(point, coarseGridPoints, config);
+    const samples = hyperbolicEdgeSamples(a, b, config.edgeSubdivisions);
+    for (let subdivision = 1; subdivision < config.edgeSubdivisions; subdivision += 1) {
+      const point = samples[subdivision - 1];
+      if (!point) {
+        continue;
+      }
+      addCoarseGridPoint(
+        point,
+        gridAnchor(tile.walk, {
+          kind: 'edge',
+          index: i,
+          subdivision,
+          subdivisions: config.edgeSubdivisions,
+        }),
+        coarseGridPoints,
+        config,
+      );
     }
   }
 };
 
 const addCoarseGridPoint = (
   point: DiskPoint,
+  anchor: GridAnchor,
   coarseGridPoints: Map<string, GridPoint>,
   config: TilingConfig,
 ): void => {
-  const gridPoint = createGridPoint(point, config);
-  if (gridPoint && !coarseGridPoints.has(gridIdKey(gridPoint.id))) {
-    coarseGridPoints.set(gridIdKey(gridPoint.id), gridPoint);
+  const gridPoint = createGridPoint(point, anchor, config);
+  if (!gridPoint) {
+    return;
+  }
+
+  const pointKey = gridIdKey(gridPoint.id);
+  if (!coarseGridPoints.has(pointKey)) {
+    coarseGridPoints.set(pointKey, gridPoint);
   }
 };
 
-const createGridPoint = (point: DiskPoint, config: TilingConfig): GridPoint | null => {
+const createGridPoint = (
+  point: DiskPoint,
+  anchor: GridAnchor,
+  config: TilingConfig,
+): GridPoint | null => {
   if (abs2(point) > config.maxRadius * config.maxRadius) {
     return null;
   }
@@ -263,36 +299,8 @@ const createGridPoint = (point: DiskPoint, config: TilingConfig): GridPoint | nu
     id: { xi: Math.round(point[0] * GRID_PRECISION), yi: Math.round(point[1] * GRID_PRECISION) },
     layer: 'coarse',
     point: [point[0], point[1]],
+    anchor,
   };
-};
-
-const hyperbolicInterpolateSegments = (
-  a: DiskPoint,
-  b: DiskPoint,
-  subdivisions: number,
-): DiskPoint[] => {
-  const toOrigin = transformFromPointPair(a, [0, 0]);
-  const bFromOrigin = applyTransform(toOrigin, b);
-  const radius = Math.sqrt(abs2(bFromOrigin));
-
-  if (radius < 1e-12) {
-    return [];
-  }
-
-  const points: DiskPoint[] = [];
-  const fromOrigin = invertTransform(toOrigin);
-  const distance = Math.atanh(Math.min(radius, 0.999999999999));
-  const ux = bFromOrigin[0] / radius;
-  const uy = bFromOrigin[1] / radius;
-
-  for (let segment = 1; segment < subdivisions; segment += 1) {
-    const interpolatedRadius = Math.tanh((segment / subdivisions) * distance);
-    const interpolatedFromOrigin: DiskPoint = [ux * interpolatedRadius, uy * interpolatedRadius];
-
-    points.push(applyTransform(fromOrigin, interpolatedFromOrigin));
-  }
-
-  return points;
 };
 
 const tileKey = (point: Complex): string =>
@@ -308,10 +316,29 @@ const validateTiling = (p: number, q: number): void => {
   if ((p - 2) * (q - 2) <= 4) {
     throw new Error(`{${p},${q}} is not a hyperbolic tiling.`);
   }
+
+  // The persistent coordinate system (tileWalk/tileCanonical) is specialized to
+  // the {3,7} tiling. Reject anything else rather than build a tiling whose
+  // anchors the resolver would silently mislabel.
+  if (p !== TILE_P || q !== TILE_Q) {
+    throw new Error(`The coordinate system is locked to {${TILE_P},${TILE_Q}}, got {${p},${q}}.`);
+  }
 };
 
 const validateSubdivisions = (edgeSubdivisions: number): void => {
   if (!Number.isInteger(edgeSubdivisions) || edgeSubdivisions < 1) {
     throw new Error('Grid edge subdivisions must be a positive integer.');
+  }
+};
+
+const validateMaxRadius = (maxRadius: number): void => {
+  if (!Number.isFinite(maxRadius) || maxRadius <= 0 || maxRadius >= 1) {
+    throw new Error('Tiling maxRadius must be finite and inside the unit disk.');
+  }
+};
+
+const validateMaxTiles = (maxTiles: number): void => {
+  if (!Number.isInteger(maxTiles) || maxTiles < 1) {
+    throw new Error('Tiling maxTiles must be a positive integer.');
   }
 };

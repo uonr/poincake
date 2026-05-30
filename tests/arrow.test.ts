@@ -7,6 +7,7 @@ import { generateHyperbolicTiling } from '../src/grid/hyperbolicTiling';
 import type { Arrow } from '../src/model/arrow';
 import { applyWorldCommand, applyWorldPatch } from '../src/model/commands';
 import { HyperbolicWorldState } from '../src/model/worldState';
+import { anchorAt } from './support';
 
 const createWorld = () => {
   const tiling = generateHyperbolicTiling({ maxRadius: 0.75, maxTiles: 80 });
@@ -14,20 +15,28 @@ const createWorld = () => {
   return new HyperbolicWorldState([], grid, []);
 };
 
-const makeArrow = (id: string): Arrow => ({
-  id,
-  from: [0.1, 0.2],
-  to: [-0.3, 0.15],
-  label: '',
-  appearance: { color: 'c1' },
-  createdAt: 1,
-  updatedAt: 1,
-});
+const makeArrow = (world: HyperbolicWorldState, id: string): Arrow => {
+  const from = anchorAt(world.grid.tiling, 0);
+  const to = anchorAt(world.grid.tiling, 1);
+  if (!from || !to) {
+    throw new Error('Test tiling did not generate enough grid anchors.');
+  }
+
+  return {
+    id,
+    from,
+    to,
+    label: '',
+    appearance: { color: 'c1' },
+    createdAt: 1,
+    updatedAt: 1,
+  };
+};
 
 describe('arrow commands', () => {
   it('creates an arrow and produces a reversible patch', () => {
     const world = createWorld();
-    const arrow = makeArrow('arrow-0');
+    const arrow = makeArrow(world, 'arrow-0');
 
     const result = applyWorldCommand(world, { type: 'create-arrow', arrow });
 
@@ -47,7 +56,7 @@ describe('arrow commands', () => {
 
   it('deletes an arrow and restores it from the patch', () => {
     const world = createWorld();
-    applyWorldCommand(world, { type: 'create-arrow', arrow: makeArrow('arrow-0') });
+    applyWorldCommand(world, { type: 'create-arrow', arrow: makeArrow(world, 'arrow-0') });
 
     const result = applyWorldCommand(world, { type: 'delete-arrow', arrowId: 'arrow-0' });
     expect(world.arrows).toEqual([]);
@@ -63,7 +72,7 @@ describe('arrow commands', () => {
 
   it('updates label and color through one reversible command', () => {
     const world = createWorld();
-    applyWorldCommand(world, { type: 'create-arrow', arrow: makeArrow('arrow-0') });
+    applyWorldCommand(world, { type: 'create-arrow', arrow: makeArrow(world, 'arrow-0') });
 
     const result = applyWorldCommand(world, {
       type: 'update-arrow',
@@ -116,19 +125,25 @@ describe('arrow commands', () => {
 
   it('carries arrow endpoints through reanchoring', () => {
     const world = createWorld();
-    const arrow = makeArrow('arrow-0');
+    const arrow = makeArrow(world, 'arrow-0');
     applyWorldCommand(world, { type: 'create-arrow', arrow });
 
     const transform = transformFromPointPair([0.4, 0.1], [0, 0]);
-    const expectedFrom = applyTransform(transform, [0.1, 0.2]);
-    const expectedTo = applyTransform(transform, [-0.3, 0.15]);
+    const initialFrom = world.grid.worldPointForAnchor(arrow.from);
+    const initialTo = world.grid.worldPointForAnchor(arrow.to);
+    const expectedFrom = applyTransform(transform, initialFrom ?? [0, 0]);
+    const expectedTo = applyTransform(transform, initialTo ?? [0, 0]);
 
     applyWorldCommand(world, { type: 'reanchor-world', transform });
 
-    expect(world.arrows[0]?.from[0]).toBeCloseTo(expectedFrom[0], 10);
-    expect(world.arrows[0]?.from[1]).toBeCloseTo(expectedFrom[1], 10);
-    expect(world.arrows[0]?.to[0]).toBeCloseTo(expectedTo[0], 10);
-    expect(world.arrows[0]?.to[1]).toBeCloseTo(expectedTo[1], 10);
+    const actualFrom = world.grid.worldPointForAnchor(arrow.from);
+    const actualTo = world.grid.worldPointForAnchor(arrow.to);
+    expect(world.arrows[0]?.from).toEqual(arrow.from);
+    expect(world.arrows[0]?.to).toEqual(arrow.to);
+    expect(actualFrom?.[0]).toBeCloseTo(expectedFrom[0], 10);
+    expect(actualFrom?.[1]).toBeCloseTo(expectedFrom[1], 10);
+    expect(actualTo?.[0]).toBeCloseTo(expectedTo[0], 10);
+    expect(actualTo?.[1]).toBeCloseTo(expectedTo[1], 10);
   });
 });
 

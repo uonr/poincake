@@ -1,5 +1,6 @@
 import type { DiskPoint } from '../geometry/disk';
 import type { DiskTransform } from '../geometry/mobius';
+import { cloneAnchor, type GridAnchor } from '../grid/tilingAddress';
 import type { Arrow, ArrowAppearance, ArrowId } from './arrow';
 import type { Note, NoteAppearance, NoteContent, NoteId } from './note';
 import type { HyperbolicWorldState } from './worldState';
@@ -14,7 +15,7 @@ export type WorldCommand =
       updatedAt: number;
     }>
   | Readonly<{ type: 'delete-note'; noteId: NoteId }>
-  | Readonly<{ type: 'move-note'; noteId: NoteId; position: DiskPoint; updatedAt: number }>
+  | Readonly<{ type: 'move-note'; noteId: NoteId; anchor: GridAnchor; updatedAt: number }>
   | Readonly<{ type: 'create-arrow'; arrow: Arrow }>
   | Readonly<{
       type: 'update-arrow';
@@ -37,7 +38,7 @@ export type NoteUpdateSnapshot = Readonly<{
 }>;
 
 export type NoteMoveSnapshot = Readonly<{
-  position: DiskPoint;
+  anchor: GridAnchor;
   updatedAt: number;
 }>;
 
@@ -147,15 +148,15 @@ export const applyWorldCommand = (
       }
 
       const before: NoteMoveSnapshot = {
-        position: note.position,
+        anchor: note.anchor,
         updatedAt: note.updatedAt,
       };
       const after: NoteMoveSnapshot = {
-        position: command.position,
+        anchor: command.anchor,
         updatedAt: command.updatedAt,
       };
 
-      note.position = command.position;
+      note.anchor = command.anchor;
       note.updatedAt = command.updatedAt;
       return {
         note,
@@ -276,7 +277,7 @@ export const applyWorldPatch = (
       }
 
       const snapshot = direction === 'forward' ? patch.after : patch.before;
-      note.position = snapshot.position;
+      note.anchor = snapshot.anchor;
       note.updatedAt = snapshot.updatedAt;
       return;
     }
@@ -330,14 +331,14 @@ const deleteArrow = (world: HyperbolicWorldState, arrowId: ArrowId): void => {
 
 const cloneNote = (note: Note): Note => ({
   ...note,
-  position: [...note.position],
+  anchor: cloneAnchor(note.anchor),
   content: { ...note.content },
   appearance: { ...note.appearance },
 });
 
 const cloneArrow = (arrow: Arrow): Arrow => ({
   ...arrow,
-  from: [...arrow.from],
-  to: [...arrow.to],
+  from: cloneAnchor(arrow.from),
+  to: cloneAnchor(arrow.to),
   appearance: { ...arrow.appearance },
 });

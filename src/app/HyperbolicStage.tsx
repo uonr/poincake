@@ -46,7 +46,9 @@ export const HyperbolicStage = () => {
 
     const tiling = generateHyperbolicTiling();
     const grid = new AnchoredGrid(tiling);
-    const notes = seedNotes(tiling.coarseGridPoints, 700, { maxInitialRadius: 0.92 });
+    const notes = seedNotes(tiling.coarseGridPoints, 700, {
+      maxInitialRadius: 0.92,
+    });
     const controller = new HyperbolicCanvasController({
       stage,
       canvas,

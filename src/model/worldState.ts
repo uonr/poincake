@@ -21,15 +21,6 @@ export class HyperbolicWorldState {
     transform: DiskTransform,
     transientPoints: readonly (DiskPoint | null)[] = [],
   ): (DiskPoint | null)[] {
-    for (const note of this.notes) {
-      note.position = applyTransform(transform, note.position);
-    }
-
-    for (const arrow of this.arrows) {
-      arrow.from = applyTransform(transform, arrow.from);
-      arrow.to = applyTransform(transform, arrow.to);
-    }
-
     this.homePoint = applyTransform(transform, this.homePoint);
     this.grid.reanchor(transform);
 

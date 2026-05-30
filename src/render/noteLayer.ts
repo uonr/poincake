@@ -10,6 +10,11 @@ const DOT_OPACITY = 0.72;
 const EDGE_MARKER_OPACITY = 0.58;
 const PROJECTION_RADIUS = 0.9995;
 
+export type RenderedNote = Readonly<{
+  note: Note;
+  point: DiskPoint;
+}>;
+
 export class NoteLayer {
   private readonly elements = new Map<string, HTMLDivElement>();
 
@@ -58,7 +63,7 @@ export class NoteLayer {
   }
 
   render(
-    notes: readonly Note[],
+    notes: readonly RenderedNote[],
     view: DiskTransform,
     viewport: Viewport,
     editingNoteId: string | null,
@@ -66,7 +71,8 @@ export class NoteLayer {
   ): void {
     const occupiedDotCells = new Set<string>();
 
-    for (const note of notes) {
+    for (const rendered of notes) {
+      const { note, point } = rendered;
       const element = this.requireElement(note.id);
 
       if (note.id === editingNoteId) {
@@ -75,7 +81,7 @@ export class NoteLayer {
       }
 
       element.dataset.noteSelected = note.id === selectedNoteId ? 'true' : 'false';
-      const transformed = applyTransform(view, note.position);
+      const transformed = applyTransform(view, point);
       const radius2 = abs2(transformed);
       const scale = 1 - radius2;
       const projected = projectDiskPoint(clampForProjection(transformed), viewport);

@@ -1,8 +1,8 @@
 import type { DiskPoint } from '../geometry/disk';
 import { sampleGeodesic } from '../geometry/hyperbolic';
 import { applyTransform, type DiskTransform } from '../geometry/mobius';
-import type { Arrow, ArrowId } from '../model/arrow';
-import { projectDiskPoint, type ProjectedPoint, type Viewport } from './viewport';
+import type { ArrowId } from '../model/arrow';
+import { type ProjectedPoint, projectDiskPoint, type Viewport } from './viewport';
 
 // Pure geometry behind the arrow overlay: projecting a world-frame geodesic to
 // screen space, finding its midpoint, and hit-testing a screen point against the
@@ -11,6 +11,12 @@ import { projectDiskPoint, type ProjectedPoint, type Viewport } from './viewport
 
 export const ARROW_SEGMENTS = 28;
 export const ARROW_HIT_THRESHOLD = 8;
+
+export type ArrowGeometry = Readonly<{
+  id: ArrowId;
+  from: DiskPoint;
+  to: DiskPoint;
+}>;
 
 // The arrow's geodesic, transformed by the current view and projected to screen
 // space as a polyline.
@@ -40,7 +46,7 @@ export const arrowMidpoint = (
 // The id of the topmost arrow whose projected geodesic passes within `threshold`
 // pixels of the given viewport-space point, or null.
 export const arrowHitTest = (
-  arrows: readonly Arrow[],
+  arrows: readonly ArrowGeometry[],
   view: DiskTransform,
   viewport: Viewport,
   screenX: number,

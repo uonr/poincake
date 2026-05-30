@@ -23,6 +23,12 @@ export type ArrowDraft = Readonly<{
   color: NoteColor;
 }>;
 
+export type RenderedArrow = Readonly<{
+  arrow: Arrow;
+  from: DiskPoint;
+  to: DiskPoint;
+}>;
+
 export type ArrowColorResolver = (color: NoteColor) => string;
 
 export type ArrowDrawOptions = Readonly<{
@@ -49,7 +55,7 @@ export class ArrowLayer {
   }
 
   draw(
-    arrows: readonly Arrow[],
+    arrows: readonly RenderedArrow[],
     view: DiskTransform,
     viewport: Viewport,
     colorFor: ArrowColorResolver,
@@ -72,8 +78,9 @@ export class ArrowLayer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    for (const arrow of arrows) {
-      const points = projectArrowGeodesic(arrow.from, arrow.to, view, viewport);
+    for (const rendered of arrows) {
+      const { arrow } = rendered;
+      const points = projectArrowGeodesic(rendered.from, rendered.to, view, viewport);
       const color = colorFor(arrowColor(arrow));
       this.strokeArrow(points, color, {
         alpha: 1,

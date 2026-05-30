@@ -1,3 +1,4 @@
+import type { ArrowSelection } from '../core/arrowSelection';
 import type { EditingSession } from '../core/editingSession';
 import type { SelectionState } from '../core/selectionState';
 import { abs2 } from '../geometry/complex';
@@ -10,11 +11,14 @@ import {
   transformFromPointPair,
 } from '../geometry/mobius';
 import type { AnchoredGrid } from '../grid/anchoredGrid';
+import type { Arrow } from '../model/arrow';
 import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
 import { type HistoryState, WorldHistory } from '../model/history';
 import { type Note, type NoteColor, noteColor, noteDisplayText } from '../model/note';
 import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
 import { HyperbolicWorldState } from '../model/worldState';
+import { arrowHitTest, arrowMidpoint } from '../render/arrowGeometry';
+import { type ArrowDraft, ArrowLayer } from '../render/arrowLayer';
 import { GridRenderer } from '../render/gridRenderer';
 import { NoteLayer } from '../render/noteLayer';
 import {
@@ -26,7 +30,7 @@ import {
   type Viewport,
 } from '../render/viewport';
 
-export type InteractionMode = 'pan' | 'edit' | 'move';
+export type InteractionMode = 'pan' | 'edit' | 'move' | 'arrow';
 type PointerMode =
   | 'idle'
   | 'editing'
@@ -34,16 +38,21 @@ type PointerMode =
   | 'pan'
   | 'pending-item'
   | 'item-drag'
-  | 'pan-from-item';
+  | 'pan-from-item'
+  | 'arrow-draw';
+
+const ARROW_DEFAULT_COLOR: NoteColor = 'c1';
 
 export type HyperbolicCanvasControllerOptions = Readonly<{
   stage: HTMLElement;
   canvas: HTMLCanvasElement;
+  arrowCanvas: HTMLCanvasElement;
   notes: Note[];
   grid: AnchoredGrid;
   initialMode?: InteractionMode;
   onEditingSessionChange?: (session: EditingSession | null) => void;
   onSelectionChange?: (selection: SelectionState) => void;
+  onArrowSelectionChange?: (selection: ArrowSelection | null) => void;
   onZoomStateChange?: (state: ZoomState) => void;
   onHistoryStateChange?: (state: HistoryState) => void;
 }>;
@@ -56,6 +65,7 @@ export type ZoomState = Readonly<{
 export class HyperbolicCanvasController {
   private readonly gridRenderer: GridRenderer;
   private readonly noteLayer: NoteLayer;
+  private readonly arrowLayer: ArrowLayer;
   private readonly world: HyperbolicWorldState;
   private readonly history = new WorldHistory();
   private interactionMode: InteractionMode;
@@ -75,17 +85,30 @@ export class HyperbolicCanvasController {
   private editingVisible = false;
   private pendingNoteId: string | null = null;
   private nextNoteId: number;
+  private nextArrowId = 0;
+  private arrowFrom: DiskPoint | null = null;
+  private draftArrowTo: DiskPoint | null = null;
+  private pendingArrowHitId: string | null = null;
+  private selectedArrowId: string | null = null;
   private flying = false;
   private rafId: number | null = null;
   private started = false;
   // Cached layout/style; see refreshViewMetrics.
   private stageRect: StageRect | null = null;
   private gridColor = '#888';
+  private surfaceColor = '#ffffff';
+  private arrowColors: Record<NoteColor, string> = {
+    c1: '#3157a3',
+    c2: '#0b6b4f',
+    c3: '#9a4d00',
+    c4: '#8a3a5b',
+  };
   private readonly disposers: (() => void)[] = [];
 
   constructor(private readonly options: HyperbolicCanvasControllerOptions) {
     this.gridRenderer = new GridRenderer(options.canvas);
     this.noteLayer = new NoteLayer(options.stage);
+    this.arrowLayer = new ArrowLayer(options.arrowCanvas);
     this.world = new HyperbolicWorldState(options.notes, options.grid);
     this.interactionMode = options.initialMode ?? 'pan';
     this.nextNoteId = options.notes.length;
@@ -118,9 +141,11 @@ export class HyperbolicCanvasController {
     }
 
     this.noteLayer.dispose();
+    this.arrowLayer.dispose();
     this.gridRenderer.dispose();
     this.options.stage.classList.remove('dragging', 'item-drag', 'near-snap');
     this.options.onEditingSessionChange?.(null);
+    this.options.onArrowSelectionChange?.(null);
     this.emitSelection();
     this.started = false;
   }
@@ -266,6 +291,8 @@ export class HyperbolicCanvasController {
       this.cancelEditing();
     }
 
+    this.cancelArrowGesture();
+    this.clearArrowSelection();
     this.interactionMode = mode;
     this.options.stage.classList.remove('near-snap');
   }
@@ -307,8 +334,15 @@ export class HyperbolicCanvasController {
       left: rect.left,
       top: rect.top,
     };
-    this.gridColor =
-      getComputedStyle(this.options.stage).getPropertyValue('--grid').trim() || '#888';
+    const style = getComputedStyle(this.options.stage);
+    this.gridColor = style.getPropertyValue('--grid').trim() || '#888';
+    this.surfaceColor = style.getPropertyValue('--surface-elevated').trim() || this.surfaceColor;
+    this.arrowColors = {
+      c1: style.getPropertyValue('--c1').trim() || this.arrowColors.c1,
+      c2: style.getPropertyValue('--c2').trim() || this.arrowColors.c2,
+      c3: style.getPropertyValue('--c3').trim() || this.arrowColors.c3,
+      c4: style.getPropertyValue('--c4').trim() || this.arrowColors.c4,
+    };
   }
 
   private viewport(): Viewport {
@@ -387,6 +421,7 @@ export class HyperbolicCanvasController {
       target?.closest(
         [
           '[data-testid="note-editor"]',
+          '[data-testid="arrow-inspector"]',
           '[data-testid="inspector"]',
           '[data-testid="history-controls"]',
           '[data-testid="mode-controls"]',
@@ -410,6 +445,12 @@ export class HyperbolicCanvasController {
     // Picks up scrolling / theme changes between gestures without per-frame reads.
     this.refreshViewMetrics();
     const viewport = this.viewport();
+
+    if (this.interactionMode === 'arrow') {
+      this.beginArrowGesture(event, viewport);
+      return;
+    }
+
     const noteId = this.noteLayer.getNoteIdFromEventTarget(event.target);
     if (noteId) {
       this.selectNote(noteId);
@@ -434,12 +475,17 @@ export class HyperbolicCanvasController {
   private onPointerMove(event: PointerEvent): void {
     if (this.pointerMode === 'idle') {
       this.updateHoveredNote(event.target);
-      if (this.interactionMode === 'edit') {
+      if (this.interactionMode === 'edit' || this.interactionMode === 'arrow') {
         this.updateSnapCursor(event.clientX, event.clientY);
       }
       return;
     }
     if (this.pointerMode === 'editing' || this.flying) {
+      return;
+    }
+
+    if (this.pointerMode === 'arrow-draw') {
+      this.updateArrowDraft(event);
       return;
     }
 
@@ -597,7 +643,13 @@ export class HyperbolicCanvasController {
     if (this.selectedNoteId && !this.selectedNote()) {
       this.selectedNoteId = null;
     }
+    if (this.selectedArrowId && !this.selectedArrow()) {
+      this.selectedArrowId = null;
+    }
     this.emitSelection();
+    // Arrow selection may have been invalidated by undo/redo; re-emit so the
+    // inspector UI stays in sync.
+    this.emitArrowSelection(this.viewport());
     this.emitHistoryState();
     this.requestRender();
   }
@@ -612,6 +664,12 @@ export class HyperbolicCanvasController {
 
   private selectNote(noteId: string | null): void {
     this.selectedNoteId = noteId;
+    // Arrow and note selections are mutually exclusive—only one inspector
+    // should be visible at a time.
+    if (noteId !== null && this.selectedArrowId !== null) {
+      this.selectedArrowId = null;
+      this.options.onArrowSelectionChange?.(null);
+    }
     this.emitSelection();
   }
 
@@ -653,6 +711,13 @@ export class HyperbolicCanvasController {
 
     const endedPointerMode = this.pointerMode;
     this.options.stage.classList.remove('dragging', 'item-drag');
+
+    if (endedPointerMode === 'arrow-draw') {
+      this.finishArrowGesture();
+      this.pointerMode = 'idle';
+      this.requestRender();
+      return;
+    }
 
     if (!this.didMove) {
       if (this.pointerMode === 'pending-pan' && this.dragStartPoint) {
@@ -808,6 +873,172 @@ export class HyperbolicCanvasController {
     this.options.stage.classList.toggle('near-snap', near);
   }
 
+  private beginArrowGesture(event: PointerEvent, viewport: Viewport): void {
+    this.downPosition = [event.clientX, event.clientY];
+    this.didMove = false;
+
+    const snapped = this.world.grid.snapScreenPoint(
+      event.clientX,
+      event.clientY,
+      this.view,
+      viewport,
+    );
+    this.arrowFrom = snapped ? snapped.point : null;
+    this.draftArrowTo = this.arrowFrom;
+    this.pendingArrowHitId = arrowHitTest(
+      this.world.arrows,
+      this.view,
+      viewport,
+      event.clientX - viewport.left,
+      event.clientY - viewport.top,
+    );
+
+    this.pointerMode = 'arrow-draw';
+    this.options.stage.setPointerCapture(event.pointerId);
+    this.options.stage.classList.remove('near-snap');
+    this.requestRender();
+  }
+
+  private updateArrowDraft(event: PointerEvent): void {
+    if (this.downPosition && !this.didMove) {
+      const dx = event.clientX - this.downPosition[0];
+      const dy = event.clientY - this.downPosition[1];
+      if (dx * dx + dy * dy > 16) {
+        this.didMove = true;
+      }
+    }
+
+    const viewport = this.viewport();
+    const snapped = this.world.grid.snapScreenPoint(
+      event.clientX,
+      event.clientY,
+      this.view,
+      viewport,
+    );
+    if (snapped) {
+      this.draftArrowTo = snapped.point;
+    }
+    this.updateSnapCursor(event.clientX, event.clientY);
+    this.requestRender();
+  }
+
+  // A drag between two distinct grid points draws an arrow; a click (no drag)
+  // selects the arrow under the pointer, or clears the selection on empty space.
+  private finishArrowGesture(): void {
+    this.options.stage.classList.remove('dragging');
+    const from = this.arrowFrom;
+    const to = this.draftArrowTo;
+    const hitId = this.pendingArrowHitId;
+    const moved = this.didMove;
+    this.arrowFrom = null;
+    this.draftArrowTo = null;
+    this.pendingArrowHitId = null;
+
+    if (!moved) {
+      this.selectArrow(hitId);
+      return;
+    }
+
+    if (from && to && !diskPointsAlmostEqual(from, to)) {
+      this.createArrow(from, to);
+    }
+  }
+
+  private cancelArrowGesture(): void {
+    if (this.pointerMode === 'arrow-draw') {
+      this.pointerMode = 'idle';
+      this.options.stage.classList.remove('dragging');
+    }
+    this.arrowFrom = null;
+    this.draftArrowTo = null;
+    this.pendingArrowHitId = null;
+  }
+
+  private createArrow(from: DiskPoint, to: DiskPoint): void {
+    const now = Date.now();
+    const arrow: Arrow = {
+      id: `arrow-${this.nextArrowId++}`,
+      from,
+      to,
+      label: '',
+      appearance: {
+        color: ARROW_DEFAULT_COLOR,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.applyCommand({ type: 'create-arrow', arrow });
+    // Select the fresh arrow so its inspector is one gesture away for labelling.
+    this.selectArrow(arrow.id);
+  }
+
+  private selectedArrow(): Arrow | null {
+    if (!this.selectedArrowId) {
+      return null;
+    }
+    return this.world.arrows.find((candidate) => candidate.id === this.selectedArrowId) ?? null;
+  }
+
+  private selectArrow(arrowId: string | null): void {
+    this.selectedArrowId = arrowId;
+    // Arrow and note selections are mutually exclusive.
+    if (arrowId !== null && this.selectedNoteId !== null) {
+      this.selectedNoteId = null;
+      this.emitSelection();
+    }
+    this.emitArrowSelection(this.viewport());
+    this.requestRender();
+  }
+
+  private clearArrowSelection(): void {
+    if (this.selectedArrowId === null) {
+      return;
+    }
+    this.selectedArrowId = null;
+    this.options.onArrowSelectionChange?.(null);
+    this.requestRender();
+  }
+
+  deleteSelectedArrow(): void {
+    if (!this.selectedArrowId) {
+      return;
+    }
+    this.applyCommand({ type: 'delete-arrow', arrowId: this.selectedArrowId });
+    this.selectedArrowId = null;
+    this.options.onArrowSelectionChange?.(null);
+    this.requestRender();
+  }
+
+  setSelectedArrowColor(color: NoteColor): void {
+    const arrow = this.selectedArrow();
+    if (!arrow || arrow.appearance.color === color) {
+      return;
+    }
+    this.applyCommand({
+      type: 'update-arrow',
+      arrowId: arrow.id,
+      label: arrow.label,
+      appearance: { color },
+      updatedAt: Date.now(),
+    });
+    this.requestRender();
+  }
+
+  commitSelectedArrowLabel(label: string): void {
+    const arrow = this.selectedArrow();
+    if (!arrow || arrow.label === label) {
+      return;
+    }
+    this.applyCommand({
+      type: 'update-arrow',
+      arrowId: arrow.id,
+      label,
+      appearance: arrow.appearance,
+      updatedAt: Date.now(),
+    });
+    this.requestRender();
+  }
+
   private createNote(position: DiskPoint): Note {
     const now = Date.now();
     const note: Note = {
@@ -864,6 +1095,43 @@ export class HyperbolicCanvasController {
     requestAnimationFrame(step);
   }
 
+  private emitArrowSelection(viewport: Viewport): void {
+    if (!this.options.onArrowSelectionChange) {
+      return;
+    }
+
+    const arrow = this.selectedArrow();
+    if (!arrow) {
+      this.options.onArrowSelectionChange(null);
+      return;
+    }
+
+    const midpoint = arrowMidpoint(arrow.from, arrow.to, this.view, viewport);
+    this.options.onArrowSelectionChange({
+      arrowId: arrow.id,
+      label: arrow.label,
+      color: arrow.appearance.color,
+      screenPosition: {
+        x: midpoint.x,
+        y: midpoint.y,
+      },
+    });
+  }
+
+  private arrowDraft(): ArrowDraft | null {
+    if (this.pointerMode !== 'arrow-draw' || !this.arrowFrom || !this.draftArrowTo) {
+      return null;
+    }
+    if (diskPointsAlmostEqual(this.arrowFrom, this.draftArrowTo)) {
+      return null;
+    }
+    return {
+      from: this.arrowFrom,
+      to: this.draftArrowTo,
+      color: ARROW_DEFAULT_COLOR,
+    };
+  }
+
   private requestRender(): void {
     if (this.rafId !== null) {
       return;
@@ -879,6 +1147,18 @@ export class HyperbolicCanvasController {
     const viewport = this.viewport();
 
     this.gridRenderer.draw(this.world.grid, this.view, viewport, this.gridColor);
+    this.arrowLayer.draw(
+      this.world.arrows,
+      this.view,
+      viewport,
+      (color) => this.arrowColors[color],
+      this.arrowDraft(),
+      {
+        selectedArrowId: this.selectedArrowId,
+        labelHalo: this.surfaceColor,
+      },
+    );
+
     this.noteLayer.render(
       this.world.notes,
       this.view,

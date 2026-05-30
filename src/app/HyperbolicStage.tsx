@@ -1,5 +1,6 @@
-import { Hand, LocateFixed, Move, Pencil, Redo2, Undo2, ZoomIn } from 'lucide-react';
+import { Hand, LocateFixed, Move, Pencil, Redo2, Spline, Undo2, ZoomIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import type { ArrowSelection } from '../core/arrowSelection';
 import type { EditingSession } from '../core/editingSession';
 import { emptySelectionState, type SelectionState } from '../core/selectionState';
 import { seedNotes } from '../demo/seedNotes';
@@ -11,15 +12,19 @@ import {
   type ZoomState,
 } from '../interaction/controller';
 import type { HistoryState } from '../model/history';
+import type { NoteColor } from '../model/note';
 import type { NoteDraft } from '../model/noteDraft';
+import { ArrowInspector } from './ArrowInspector';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
 
 export const HyperbolicStage = () => {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const arrowCanvasRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<HyperbolicCanvasController | null>(null);
   const [mode, setMode] = useState<InteractionMode>('pan');
   const [editingSession, setEditingSession] = useState<EditingSession | null>(null);
+  const [arrowSelection, setArrowSelection] = useState<ArrowSelection | null>(null);
   const [, setSelection] = useState<SelectionState>(emptySelectionState);
   const [history, setHistory] = useState<HistoryState>({
     canUndo: false,
@@ -33,8 +38,9 @@ export const HyperbolicStage = () => {
   useEffect(() => {
     const stage = stageRef.current;
     const canvas = canvasRef.current;
+    const arrowCanvas = arrowCanvasRef.current;
 
-    if (!stage || !canvas) {
+    if (!stage || !canvas || !arrowCanvas) {
       throw new Error('Hyperbolic stage mounted without required DOM refs.');
     }
 
@@ -44,10 +50,12 @@ export const HyperbolicStage = () => {
     const controller = new HyperbolicCanvasController({
       stage,
       canvas,
+      arrowCanvas,
       notes,
       grid,
       initialMode: 'pan',
       onEditingSessionChange: setEditingSession,
+      onArrowSelectionChange: setArrowSelection,
       onSelectionChange: setSelection,
       onZoomStateChange: setZoomState,
       onHistoryStateChange: setHistory,
@@ -76,9 +84,18 @@ export const HyperbolicStage = () => {
     controllerRef.current?.setZoom(nextZoom);
   };
 
+  const changeArrowColor = (color: NoteColor): void => {
+    controllerRef.current?.setSelectedArrowColor(color);
+  };
+
+  const changeArrowLabel = (label: string): void => {
+    controllerRef.current?.commitSelectedArrowLabel(label);
+  };
+
   return (
     <div id="stage" className={`mode-${mode}`} ref={stageRef}>
       <canvas id="grid" ref={canvasRef} />
+      <canvas id="arrows" ref={arrowCanvasRef} />
       {editingSession ? (
         <NoteEditorOverlay
           key={editingSession.noteId}
@@ -86,6 +103,15 @@ export const HyperbolicStage = () => {
           onCommit={commitEditingDraft}
           onCancel={() => controllerRef.current?.cancelEditing()}
           onDelete={() => controllerRef.current?.deleteEditingNote()}
+        />
+      ) : null}
+      {arrowSelection && mode === 'arrow' ? (
+        <ArrowInspector
+          key={arrowSelection.arrowId}
+          selection={arrowSelection}
+          onChangeColor={changeArrowColor}
+          onChangeLabel={changeArrowLabel}
+          onDelete={() => controllerRef.current?.deleteSelectedArrow()}
         />
       ) : null}
       <div className="top-left-controls">
@@ -137,6 +163,15 @@ export const HyperbolicStage = () => {
           >
             <Move size={14} aria-hidden />
             Move
+          </button>
+          <button
+            data-mode="arrow"
+            className={mode === 'arrow' ? 'active' : undefined}
+            type="button"
+            onClick={() => changeMode('arrow')}
+          >
+            <Spline size={14} aria-hidden />
+            Arrow
           </button>
         </fieldset>
       </div>

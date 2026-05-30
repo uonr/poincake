@@ -84,6 +84,21 @@ body {
   width: 100%;
 }
 
+/* Stacking order within #stage: grid (bottom) → arrows → notes (top).
+   Note .item elements are DOM siblings of the canvases, so they need an
+   explicit z-index to sit above the arrow overlay. */
+#grid {
+  z-index: 0;
+}
+
+#arrows {
+  z-index: 1;
+}
+
+.item {
+  z-index: 2;
+}
+
 #stage.mode-pan,
 #stage.mode-edit,
 #stage.mode-move {
@@ -92,6 +107,14 @@ body {
 
 #stage.mode-edit.near-snap {
   cursor: text;
+}
+
+#stage.mode-arrow {
+  cursor: crosshair;
+}
+
+#stage.mode-arrow .item:not(.editing) {
+  cursor: crosshair;
 }
 
 #stage.dragging {
@@ -321,6 +344,81 @@ body {
 }
 
 .note-editor-actions button.danger {
+  color: #a43737;
+}
+
+.arrow-inspector {
+  align-items: stretch;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-top: 3px solid currentColor;
+  border-radius: 8px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  left: 0;
+  padding: 10px;
+  position: absolute;
+  top: 0;
+  width: 196px;
+  z-index: 12;
+}
+
+.arrow-inspector.c1 {
+  color: var(--c1);
+}
+
+.arrow-inspector.c2 {
+  color: var(--c2);
+}
+
+.arrow-inspector.c3 {
+  color: var(--c3);
+}
+
+.arrow-inspector.c4 {
+  color: var(--c4);
+}
+
+.arrow-inspector-label {
+  background: transparent;
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  padding: 5px 8px;
+  width: 100%;
+}
+
+.arrow-inspector-label:focus {
+  border-color: currentColor;
+}
+
+.arrow-inspector-tools {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.arrow-inspector-tools button {
+  align-items: center;
+  background: transparent;
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 5px 7px;
+}
+
+.arrow-inspector-tools button:hover {
+  background: var(--surface);
+}
+
+.arrow-inspector-tools button.danger {
   color: #a43737;
 }
 

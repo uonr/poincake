@@ -1,5 +1,6 @@
 import type { DiskPoint } from '../geometry/disk';
 import type { DiskTransform } from '../geometry/mobius';
+import type { Arrow, ArrowAppearance, ArrowId } from './arrow';
 import type { Note, NoteAppearance, NoteContent, NoteId } from './note';
 import type { HyperbolicWorldState } from './worldState';
 
@@ -14,6 +15,15 @@ export type WorldCommand =
     }>
   | Readonly<{ type: 'delete-note'; noteId: NoteId }>
   | Readonly<{ type: 'move-note'; noteId: NoteId; position: DiskPoint; updatedAt: number }>
+  | Readonly<{ type: 'create-arrow'; arrow: Arrow }>
+  | Readonly<{
+      type: 'update-arrow';
+      arrowId: ArrowId;
+      label: string;
+      appearance: ArrowAppearance;
+      updatedAt: number;
+    }>
+  | Readonly<{ type: 'delete-arrow'; arrowId: ArrowId }>
   | Readonly<{
       type: 'reanchor-world';
       transform: DiskTransform;
@@ -31,6 +41,12 @@ export type NoteMoveSnapshot = Readonly<{
   updatedAt: number;
 }>;
 
+export type ArrowUpdateSnapshot = Readonly<{
+  label: string;
+  appearance: ArrowAppearance;
+  updatedAt: number;
+}>;
+
 export type WorldPatch =
   | Readonly<{ type: 'create-note'; note: Note }>
   | Readonly<{ type: 'delete-note'; note: Note }>
@@ -45,7 +61,15 @@ export type WorldPatch =
       noteId: NoteId;
       before: NoteMoveSnapshot;
       after: NoteMoveSnapshot;
-    }>;
+    }>
+  | Readonly<{ type: 'create-arrow'; arrow: Arrow }>
+  | Readonly<{
+      type: 'update-arrow';
+      arrowId: ArrowId;
+      before: ArrowUpdateSnapshot;
+      after: ArrowUpdateSnapshot;
+    }>
+  | Readonly<{ type: 'delete-arrow'; arrow: Arrow }>;
 
 export type WorldCommandResult = Readonly<{
   patch?: WorldPatch;
@@ -144,6 +168,62 @@ export const applyWorldCommand = (
       };
     }
 
+    case 'create-arrow': {
+      world.arrows.push(command.arrow);
+      return {
+        patch: {
+          type: 'create-arrow',
+          arrow: cloneArrow(command.arrow),
+        },
+      };
+    }
+
+    case 'update-arrow': {
+      const arrow = world.arrows.find((candidate) => candidate.id === command.arrowId);
+      if (!arrow) {
+        return {};
+      }
+
+      const before: ArrowUpdateSnapshot = {
+        label: arrow.label,
+        appearance: arrow.appearance,
+        updatedAt: arrow.updatedAt,
+      };
+      const after: ArrowUpdateSnapshot = {
+        label: command.label,
+        appearance: command.appearance,
+        updatedAt: command.updatedAt,
+      };
+
+      arrow.label = command.label;
+      arrow.appearance = command.appearance;
+      arrow.updatedAt = command.updatedAt;
+      return {
+        patch: {
+          type: 'update-arrow',
+          arrowId: arrow.id,
+          before,
+          after,
+        },
+      };
+    }
+
+    case 'delete-arrow': {
+      const index = world.arrows.findIndex((candidate) => candidate.id === command.arrowId);
+      if (index >= 0) {
+        const [arrow] = world.arrows.splice(index, 1);
+        if (arrow) {
+          return {
+            patch: {
+              type: 'delete-arrow',
+              arrow: cloneArrow(arrow),
+            },
+          };
+        }
+      }
+      return {};
+    }
+
     case 'reanchor-world': {
       return {
         transientPoints: world.reanchor(command.transform, command.transientPoints ?? []),
@@ -200,6 +280,37 @@ export const applyWorldPatch = (
       note.updatedAt = snapshot.updatedAt;
       return;
     }
+
+    case 'create-arrow': {
+      if (direction === 'forward') {
+        world.arrows.push(cloneArrow(patch.arrow));
+      } else {
+        deleteArrow(world, patch.arrow.id);
+      }
+      return;
+    }
+
+    case 'update-arrow': {
+      const arrow = world.arrows.find((candidate) => candidate.id === patch.arrowId);
+      if (!arrow) {
+        return;
+      }
+
+      const snapshot = direction === 'forward' ? patch.after : patch.before;
+      arrow.label = snapshot.label;
+      arrow.appearance = snapshot.appearance;
+      arrow.updatedAt = snapshot.updatedAt;
+      return;
+    }
+
+    case 'delete-arrow': {
+      if (direction === 'forward') {
+        deleteArrow(world, patch.arrow.id);
+      } else {
+        world.arrows.push(cloneArrow(patch.arrow));
+      }
+      return;
+    }
   }
 };
 
@@ -210,9 +321,23 @@ const deleteNote = (world: HyperbolicWorldState, noteId: NoteId): void => {
   }
 };
 
+const deleteArrow = (world: HyperbolicWorldState, arrowId: ArrowId): void => {
+  const index = world.arrows.findIndex((candidate) => candidate.id === arrowId);
+  if (index >= 0) {
+    world.arrows.splice(index, 1);
+  }
+};
+
 const cloneNote = (note: Note): Note => ({
   ...note,
   position: [...note.position],
   content: { ...note.content },
   appearance: { ...note.appearance },
+});
+
+const cloneArrow = (arrow: Arrow): Arrow => ({
+  ...arrow,
+  from: [...arrow.from],
+  to: [...arrow.to],
+  appearance: { ...arrow.appearance },
 });

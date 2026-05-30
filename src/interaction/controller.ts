@@ -17,7 +17,14 @@ import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/n
 import { HyperbolicWorldState } from '../model/worldState';
 import { GridRenderer } from '../render/gridRenderer';
 import { NoteLayer } from '../render/noteLayer';
-import { createViewport, fitDiskZoom, projectDiskPoint, screenToDisk } from '../render/viewport';
+import {
+  createViewportFromRect,
+  fitDiskZoom,
+  projectDiskPoint,
+  type StageRect,
+  screenToDisk,
+  type Viewport,
+} from '../render/viewport';
 
 export type InteractionMode = 'pan' | 'edit' | 'move';
 type PointerMode =
@@ -71,6 +78,9 @@ export class HyperbolicCanvasController {
   private flying = false;
   private rafId: number | null = null;
   private started = false;
+  // Cached layout/style; see refreshViewMetrics.
+  private stageRect: StageRect | null = null;
+  private gridColor = '#888';
   private readonly disposers: (() => void)[] = [];
 
   constructor(private readonly options: HyperbolicCanvasControllerOptions) {
@@ -87,6 +97,7 @@ export class HyperbolicCanvasController {
     }
 
     this.started = true;
+    this.refreshViewMetrics();
     this.noteLayer.sync(this.world.notes);
     this.bindPointerEvents();
     this.bindResize();
@@ -107,6 +118,7 @@ export class HyperbolicCanvasController {
     }
 
     this.noteLayer.dispose();
+    this.gridRenderer.dispose();
     this.options.stage.classList.remove('dragging', 'item-drag', 'near-snap');
     this.options.onEditingSessionChange?.(null);
     this.emitSelection();
@@ -284,6 +296,28 @@ export class HyperbolicCanvasController {
     return fitDiskZoom(rect.width, rect.height);
   }
 
+  // Read layout/style once and cache. getBoundingClientRect and getComputedStyle
+  // both force the browser to flush pending work, so calling them every frame
+  // during a pan thrashes layout against the DOM writes in NoteLayer.render.
+  private refreshViewMetrics(): void {
+    const rect = this.options.stage.getBoundingClientRect();
+    this.stageRect = {
+      width: rect.width,
+      height: rect.height,
+      left: rect.left,
+      top: rect.top,
+    };
+    this.gridColor =
+      getComputedStyle(this.options.stage).getPropertyValue('--grid').trim() || '#888';
+  }
+
+  private viewport(): Viewport {
+    if (!this.stageRect) {
+      this.refreshViewMetrics();
+    }
+    return createViewportFromRect(this.stageRect as StageRect, this.zoom);
+  }
+
   private emitZoomState(): void {
     this.options.onZoomStateChange?.({
       zoom: this.zoom,
@@ -320,6 +354,7 @@ export class HyperbolicCanvasController {
   private bindResize(): void {
     if (typeof ResizeObserver !== 'undefined') {
       const observer = new ResizeObserver(() => {
+        this.refreshViewMetrics();
         this.updateMinimumZoom();
         this.requestRender();
       });
@@ -327,6 +362,7 @@ export class HyperbolicCanvasController {
       this.disposers.push(() => observer.disconnect());
     }
     this.listen(window, 'resize', () => {
+      this.refreshViewMetrics();
       this.updateMinimumZoom();
       this.requestRender();
     });
@@ -371,7 +407,9 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    const viewport = createViewport(this.options.stage, this.zoom);
+    // Picks up scrolling / theme changes between gestures without per-frame reads.
+    this.refreshViewMetrics();
+    const viewport = this.viewport();
     const noteId = this.noteLayer.getNoteIdFromEventTarget(event.target);
     if (noteId) {
       this.selectNote(noteId);
@@ -443,7 +481,7 @@ export class HyperbolicCanvasController {
       return;
     }
 
-    const viewport = createViewport(this.options.stage, this.zoom);
+    const viewport = this.viewport();
     const z = clampDisk(screenToDisk(event.clientX, event.clientY, viewport));
     this.view = transformFromPointPair(this.dragStartPoint, z);
     this.reanchorIfNeeded();
@@ -478,7 +516,7 @@ export class HyperbolicCanvasController {
       this.options.stage.classList.add('item-drag');
     }
 
-    const viewport = createViewport(this.options.stage, this.zoom);
+    const viewport = this.viewport();
     const snappedGridPoint = this.world.grid.snapScreenPoint(
       event.clientX,
       event.clientY,
@@ -619,7 +657,7 @@ export class HyperbolicCanvasController {
     if (!this.didMove) {
       if (this.pointerMode === 'pending-pan' && this.dragStartPoint) {
         if (this.interactionMode === 'edit' && this.downPosition) {
-          const viewport = createViewport(this.options.stage, this.zoom);
+          const viewport = this.viewport();
           const snapped = this.world.grid.snapScreenPoint(
             this.downPosition[0],
             this.downPosition[1],
@@ -725,7 +763,7 @@ export class HyperbolicCanvasController {
     this.requestRender();
   }
 
-  private emitEditingSession(viewport: ReturnType<typeof createViewport>): void {
+  private emitEditingSession(viewport: Viewport): void {
     if (!this.options.onEditingSessionChange) {
       return;
     }
@@ -758,7 +796,7 @@ export class HyperbolicCanvasController {
   }
 
   private updateSnapCursor(clientX: number, clientY: number): void {
-    const viewport = createViewport(this.options.stage, this.zoom);
+    const viewport = this.viewport();
     const snapped = this.world.grid.snapScreenPoint(clientX, clientY, this.view, viewport);
     let near = false;
     if (snapped) {
@@ -838,11 +876,9 @@ export class HyperbolicCanvasController {
   }
 
   private render(): void {
-    const viewport = createViewport(this.options.stage, this.zoom);
-    const gridColor =
-      getComputedStyle(this.options.stage).getPropertyValue('--grid').trim() || '#888';
+    const viewport = this.viewport();
 
-    this.gridRenderer.draw(this.world.grid, this.view, viewport, gridColor);
+    this.gridRenderer.draw(this.world.grid, this.view, viewport, this.gridColor);
     this.noteLayer.render(
       this.world.notes,
       this.view,

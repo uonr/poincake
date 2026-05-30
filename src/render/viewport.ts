@@ -35,8 +35,14 @@ export const fitDiskZoom = (
   return fittedRadius / diagonalRadius;
 };
 
-export const createViewport = (stage: HTMLElement, zoom: number): Viewport => {
-  const rect = stage.getBoundingClientRect();
+export type StageRect = Readonly<{
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+}>;
+
+export const createViewportFromRect = (rect: StageRect, zoom: number): Viewport => {
   const cx = rect.width / 2;
   const cy = rect.height / 2;
 
@@ -51,6 +57,9 @@ export const createViewport = (stage: HTMLElement, zoom: number): Viewport => {
     zoom,
   };
 };
+
+export const createViewport = (stage: HTMLElement, zoom: number): Viewport =>
+  createViewportFromRect(stage.getBoundingClientRect(), zoom);
 
 export const projectDiskPoint = (z: DiskPoint, viewport: Viewport): ProjectedPoint => ({
   x: viewport.cx + z[0] * viewport.radius,

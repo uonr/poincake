@@ -48,6 +48,12 @@ export class AnchoredGrid {
     }
   }
 
+  // Per-frame transform for the GPU grid renderer: reanchoring lands here, in the
+  // transform, so the static grid-local point buffer never needs re-uploading.
+  worldView(view: DiskTransform): DiskTransform {
+    return composeTransforms(view, this.gridToWorld);
+  }
+
   visiblePoints(view: DiskTransform, maxViewRadius: number): AnchoredGridView {
     const gridView = composeTransforms(view, this.gridToWorld);
     const viewCenter = applyTransform(invertTransform(gridView), [0, 0]);

@@ -1,3 +1,4 @@
+import { Hand, LocateFixed, Move, Pencil, Redo2, Undo2, ZoomIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { EditingSession } from '../core/editingSession';
 import { emptySelectionState, type SelectionState } from '../core/selectionState';
@@ -91,17 +92,21 @@ export const HyperbolicStage = () => {
         <div className="history-controls" data-testid="history-controls">
           <button
             type="button"
+            aria-label="Undo"
+            title="Undo"
             onClick={() => controllerRef.current?.undo()}
             disabled={!history.canUndo}
           >
-            Undo
+            <Undo2 size={15} aria-hidden />
           </button>
           <button
             type="button"
+            aria-label="Redo"
+            title="Redo"
             onClick={() => controllerRef.current?.redo()}
             disabled={!history.canRedo}
           >
-            Redo
+            <Redo2 size={15} aria-hidden />
           </button>
         </div>
         <fieldset className="mode-buttons" data-testid="mode-controls">
@@ -112,6 +117,7 @@ export const HyperbolicStage = () => {
             type="button"
             onClick={() => changeMode('pan')}
           >
+            <Hand size={14} aria-hidden />
             Navigate
           </button>
           <button
@@ -120,6 +126,7 @@ export const HyperbolicStage = () => {
             type="button"
             onClick={() => changeMode('edit')}
           >
+            <Pencil size={14} aria-hidden />
             Edit
           </button>
           <button
@@ -128,11 +135,13 @@ export const HyperbolicStage = () => {
             type="button"
             onClick={() => changeMode('move')}
           >
+            <Move size={14} aria-hidden />
             Move
           </button>
         </fieldset>
       </div>
       <div className="zoom-control" data-testid="zoom-controls">
+        <ZoomIn size={15} aria-hidden />
         <span>Zoom</span>
         <input
           type="range"
@@ -145,6 +154,7 @@ export const HyperbolicStage = () => {
         />
         <span id="zoom-val">{zoomState.zoom.toFixed(2)}x</span>
         <button id="reset" type="button" onClick={() => controllerRef.current?.resetView()}>
+          <LocateFixed size={14} aria-hidden />
           Origin
         </button>
       </div>

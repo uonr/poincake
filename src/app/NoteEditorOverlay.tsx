@@ -1,3 +1,4 @@
+import { Check, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { EditingSession } from '../core/editingSession';
 import type { NoteDraft } from '../model/noteDraft';
@@ -68,12 +69,17 @@ export const NoteEditorOverlay = ({
         />
         <div className="note-editor-actions">
           <button type="button" className="danger" onClick={onDelete}>
+            <Trash2 size={14} aria-hidden />
             Delete
           </button>
           <button type="button" onClick={onCancel}>
+            <X size={14} aria-hidden />
             Cancel
           </button>
-          <button type="submit">Done</button>
+          <button type="submit">
+            <Check size={14} aria-hidden />
+            Done
+          </button>
         </div>
       </div>
     </form>

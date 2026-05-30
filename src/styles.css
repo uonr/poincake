@@ -302,13 +302,16 @@ body {
 }
 
 .note-editor-actions button {
+  align-items: center;
   background: transparent;
   border: 0.5px solid var(--border);
   border-radius: 6px;
   color: var(--text);
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
   font-size: 13px;
+  gap: 5px;
   line-height: 1.4;
   padding: 4px 9px;
 }
@@ -401,15 +404,17 @@ body {
 }
 
 .history-controls button {
+  align-items: center;
   background: transparent;
   border: none;
   border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
   font-size: 13px;
   line-height: 1.4;
-  padding: 5px 12px;
+  padding: 6px 8px;
 }
 
 .history-controls button:hover:not(:disabled) {
@@ -431,15 +436,18 @@ body {
 }
 
 .mode-buttons button {
+  align-items: center;
   background: transparent;
   border: none;
   border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
   font-size: 13px;
+  gap: 5px;
   line-height: 1.4;
-  padding: 5px 12px;
+  padding: 5px 11px;
 }
 
 .mode-buttons button:hover {
@@ -480,12 +488,15 @@ body {
 }
 
 .zoom-control button {
+  align-items: center;
   background: transparent;
   border: 0.5px solid var(--border);
   border-radius: 8px;
   color: var(--text);
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
+  gap: 5px;
   line-height: 1.4;
   padding: 4px 10px;
 }

@@ -115,6 +115,8 @@ export class HyperbolicCanvasController {
     c3: '#9a4d00',
     c4: '#8a3a5b',
   };
+  private readonly notePointCache = new Map<string, DiskPoint>();
+  private readonly arrowGeometryCache = new Map<string, ArrowGeometry>();
   private readonly disposers: (() => void)[] = [];
 
   constructor(private readonly options: HyperbolicCanvasControllerOptions) {
@@ -341,6 +343,7 @@ export class HyperbolicCanvasController {
     this.world.grid.restoreChartSnapshots(content.charts);
     this.world.replaceContent(content.notes, content.arrows);
     this.history.clear();
+    this.invalidateWorldPointCache();
 
     this.view = identityTransform;
     this.pointerMode = 'idle';
@@ -603,14 +606,16 @@ export class HyperbolicCanvasController {
       return;
     }
 
+    const reanchorTransform = this.view;
     const { transientPoints = [] } = applyWorldCommand(this.world, {
       type: 'reanchor-world',
-      transform: this.view,
+      transform: reanchorTransform,
       transientPoints: [this.dragStartPoint],
     });
     const [dragStartPoint = null] = transientPoints;
     this.dragStartPoint = dragStartPoint;
     this.view = identityTransform;
+    this.transformWorldPointCache(reanchorTransform);
   }
 
   private dragItemToPointer(event: PointerEvent): void {
@@ -699,11 +704,13 @@ export class HyperbolicCanvasController {
       this.emitHistoryState();
     }
 
+    this.invalidateWorldPointCache();
     this.noteLayer.sync(this.world.notes);
     this.emitCoordinateTarget();
   }
 
   private afterHistoryChange(): void {
+    this.invalidateWorldPointCache();
     this.noteLayer.sync(this.world.notes);
     if (this.selectedNoteId && !this.selectedNote()) {
       this.selectedNoteId = null;
@@ -729,7 +736,14 @@ export class HyperbolicCanvasController {
   }
 
   private notePoint(note: Note): DiskPoint {
-    return this.world.grid.worldPointForAnchor(note.anchor);
+    const cached = this.notePointCache.get(note.id);
+    if (cached) {
+      return cached;
+    }
+
+    const point = this.world.grid.worldPointForAnchor(note.anchor);
+    this.notePointCache.set(note.id, point);
+    return point;
   }
 
   private selectNote(noteId: string | null): void {
@@ -1199,11 +1213,18 @@ export class HyperbolicCanvasController {
   }
 
   private arrowGeometry(arrow: Arrow): ArrowGeometry {
-    return {
+    const cached = this.arrowGeometryCache.get(arrow.id);
+    if (cached) {
+      return cached;
+    }
+
+    const geometry = {
       id: arrow.id,
       from: this.world.grid.worldPointForAnchor(arrow.from),
       to: this.world.grid.worldPointForAnchor(arrow.to),
     };
+    this.arrowGeometryCache.set(arrow.id, geometry);
+    return geometry;
   }
 
   private arrowGeometries(): ArrowGeometry[] {
@@ -1402,6 +1423,24 @@ export class HyperbolicCanvasController {
 
   private renderedNotes(): RenderedNote[] {
     return this.world.notes.map((note) => ({ note, point: this.notePoint(note) }));
+  }
+
+  private invalidateWorldPointCache(): void {
+    this.notePointCache.clear();
+    this.arrowGeometryCache.clear();
+  }
+
+  private transformWorldPointCache(transform: DiskTransform): void {
+    for (const [noteId, point] of this.notePointCache) {
+      this.notePointCache.set(noteId, applyTransform(transform, point));
+    }
+    for (const [arrowId, geometry] of this.arrowGeometryCache) {
+      this.arrowGeometryCache.set(arrowId, {
+        id: geometry.id,
+        from: applyTransform(transform, geometry.from),
+        to: applyTransform(transform, geometry.to),
+      });
+    }
   }
 
   private requestRender(): void {

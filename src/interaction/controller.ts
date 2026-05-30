@@ -13,7 +13,7 @@ import type { AnchoredGrid } from '../grid/anchoredGrid';
 import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
 import { type HistoryState, WorldHistory } from '../model/history';
 import { type Note, type NoteColor, noteColor, noteDisplayText } from '../model/note';
-import { type NoteDraft, parseNoteDraft } from '../model/noteDraft';
+import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
 import { HyperbolicWorldState } from '../model/worldState';
 import { GridRenderer } from '../render/gridRenderer';
 import { NoteLayer } from '../render/noteLayer';
@@ -66,6 +66,7 @@ export class HyperbolicCanvasController {
   private dragMoveBefore: NoteMoveSnapshot | null = null;
   private editingNoteId: string | null = null;
   private editingVisible = false;
+  private pendingNoteId: string | null = null;
   private nextNoteId: number;
   private flying = false;
   private rafId: number | null = null;
@@ -117,18 +118,28 @@ export class HyperbolicCanvasController {
       return;
     }
 
+    const isPending = this.editingNoteId === this.pendingNoteId;
+
     const parsed = parseNoteDraft(draft);
     if (!parsed.ok) {
+      if (isPending) {
+        this.discardPendingNote();
+        this.finishEditingSession();
+      }
       return;
     }
 
-    this.applyCommand({
-      type: 'update-note',
-      noteId: this.editingNoteId,
-      content: parsed.value.content,
-      appearance: parsed.value.appearance,
-      updatedAt: Date.now(),
-    });
+    if (isPending) {
+      this.commitPendingNote(parsed.value);
+    } else {
+      this.applyCommand({
+        type: 'update-note',
+        noteId: this.editingNoteId,
+        content: parsed.value.content,
+        appearance: parsed.value.appearance,
+        updatedAt: Date.now(),
+      });
+    }
     this.finishEditingSession();
   }
 
@@ -137,11 +148,20 @@ export class HyperbolicCanvasController {
       return;
     }
 
+    if (this.editingNoteId === this.pendingNoteId) {
+      this.discardPendingNote();
+    }
     this.finishEditingSession();
   }
 
   deleteEditingNote(): void {
     if (!this.editingNoteId) {
+      return;
+    }
+
+    if (this.editingNoteId === this.pendingNoteId) {
+      this.discardPendingNote();
+      this.finishEditingSession();
       return;
     }
 
@@ -640,7 +660,43 @@ export class HyperbolicCanvasController {
     this.requestRender();
   }
 
+  private commitPendingNote(parsed: ParsedNoteDraft): void {
+    const noteId = this.pendingNoteId;
+    this.pendingNoteId = null;
+    if (!noteId) {
+      return;
+    }
+
+    const note = this.world.notes.find((candidate) => candidate.id === noteId);
+    if (!note) {
+      return;
+    }
+
+    note.content = parsed.content;
+    note.appearance = parsed.appearance;
+    note.updatedAt = Date.now();
+
+    this.applyCommand({ type: 'delete-note', noteId }, { recordHistory: false });
+    this.applyCommand({ type: 'create-note', note });
+  }
+
+  private discardPendingNote(): void {
+    const noteId = this.pendingNoteId;
+    this.pendingNoteId = null;
+    if (!noteId) {
+      return;
+    }
+
+    this.applyCommand({ type: 'delete-note', noteId }, { recordHistory: false });
+    if (this.selectedNoteId === noteId) {
+      this.selectedNoteId = null;
+    }
+  }
+
   private startEdit(note: Note): void {
+    if (this.pendingNoteId && this.pendingNoteId !== note.id) {
+      this.discardPendingNote();
+    }
     this.selectedNoteId = note.id;
     this.pointerMode = 'editing';
     this.editingNoteId = note.id;
@@ -658,6 +714,9 @@ export class HyperbolicCanvasController {
   }
 
   private finishEditingSession(): void {
+    if (this.pendingNoteId && this.pendingNoteId === this.editingNoteId) {
+      this.discardPendingNote();
+    }
     this.editingNoteId = null;
     this.editingVisible = false;
     this.pointerMode = 'idle';
@@ -718,7 +777,7 @@ export class HyperbolicCanvasController {
       position,
       content: {
         kind: 'plain-text',
-        text: 'New note',
+        text: '',
       },
       appearance: {
         color: 'c1',
@@ -726,10 +785,14 @@ export class HyperbolicCanvasController {
       createdAt: now,
       updatedAt: now,
     };
-    this.applyCommand({
-      type: 'create-note',
-      note,
-    });
+    this.applyCommand(
+      {
+        type: 'create-note',
+        note,
+      },
+      { recordHistory: false },
+    );
+    this.pendingNoteId = note.id;
     return note;
   }
 

@@ -21,21 +21,3 @@ test('edits the active note through the React overlay', async ({ page }) => {
   await expect(page.getByTestId('note-editor')).toBeHidden();
   await expect(page.getByTestId('note').filter({ hasText: 'Edited note' })).toBeVisible();
 });
-
-test('selects a note and edits it through the inspector with undo and redo', async ({ page }) => {
-  await page.goto('/');
-
-  await page.getByTestId('note').and(page.locator('[data-note-render="text"]')).first().click();
-  await expect(page.getByTestId('selected-note')).toBeVisible();
-
-  await page.getByTestId('inspector').getByRole('button', { name: 'Edit' }).click();
-  await page.getByLabel('Note text').fill('Inspector edited note');
-  await page.getByRole('button', { name: 'Done' }).click();
-  await expect(page.getByTestId('note').filter({ hasText: 'Inspector edited note' })).toBeVisible();
-
-  await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(page.getByTestId('note').filter({ hasText: 'Inspector edited note' })).toBeHidden();
-
-  await page.getByRole('button', { name: 'Redo' }).click();
-  await expect(page.getByTestId('note').filter({ hasText: 'Inspector edited note' })).toBeVisible();
-});

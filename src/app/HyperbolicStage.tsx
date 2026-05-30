@@ -10,9 +10,7 @@ import {
   type ZoomState,
 } from '../interaction/controller';
 import type { HistoryState } from '../model/history';
-import type { NoteColor } from '../model/note';
 import type { NoteDraft } from '../model/noteDraft';
-import { Inspector } from './Inspector';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
 
 export const HyperbolicStage = () => {
@@ -21,7 +19,7 @@ export const HyperbolicStage = () => {
   const controllerRef = useRef<HyperbolicCanvasController | null>(null);
   const [mode, setMode] = useState<InteractionMode>('pan');
   const [editingSession, setEditingSession] = useState<EditingSession | null>(null);
-  const [selection, setSelection] = useState<SelectionState>(emptySelectionState);
+  const [, setSelection] = useState<SelectionState>(emptySelectionState);
   const [history, setHistory] = useState<HistoryState>({
     canUndo: false,
     canRedo: false,
@@ -75,10 +73,6 @@ export const HyperbolicStage = () => {
   const changeZoom = (nextZoom: number): void => {
     setZoomState((current) => ({ ...current, zoom: nextZoom }));
     controllerRef.current?.setZoom(nextZoom);
-  };
-
-  const changeSelectedColor = (color: NoteColor): void => {
-    controllerRef.current?.setSelectedNoteColor(color);
   };
 
   return (
@@ -138,13 +132,6 @@ export const HyperbolicStage = () => {
           </button>
         </fieldset>
       </div>
-      <Inspector
-        selection={selection}
-        onEdit={() => controllerRef.current?.editSelectedNote()}
-        onCenter={() => controllerRef.current?.centerSelectedNote()}
-        onDelete={() => controllerRef.current?.deleteSelectedNote()}
-        onColorChange={changeSelectedColor}
-      />
       <div className="zoom-control" data-testid="zoom-controls">
         <span>Zoom</span>
         <input

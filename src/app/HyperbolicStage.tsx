@@ -1,4 +1,5 @@
 import { Hand, LocateFixed, Move, Redo2, Spline, Type, Undo2, ZoomIn } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { ArrowSelection } from '../core/arrowSelection';
 import type { CoordinateTarget } from '../core/coordinateIndicator';
@@ -20,12 +21,15 @@ import { AppMenu } from './AppMenu';
 import { ArrowInspector } from './ArrowInspector';
 import { CoordinateIndicator } from './CoordinateIndicator';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
+import { Tooltip } from './Tooltip';
 
 export const HyperbolicStage = () => {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const arrowCanvasRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<HyperbolicCanvasController | null>(null);
+  const modeRef = useRef<InteractionMode>('pan');
+  const temporaryPanModeRef = useRef<InteractionMode | null>(null);
   const [mode, setMode] = useState<InteractionMode>('pan');
   const [editingSession, setEditingSession] = useState<EditingSession | null>(null);
   const [arrowSelection, setArrowSelection] = useState<ArrowSelection | null>(null);
@@ -83,9 +87,61 @@ export const HyperbolicStage = () => {
   };
 
   const changeMode = (nextMode: InteractionMode): void => {
+    temporaryPanModeRef.current = null;
+    modeRef.current = nextMode;
     setMode(nextMode);
     controllerRef.current?.setInteractionMode(nextMode);
   };
+
+  useEffect(() => {
+    const applyMode = (nextMode: InteractionMode): void => {
+      modeRef.current = nextMode;
+      setMode(nextMode);
+      controllerRef.current?.setInteractionMode(nextMode);
+    };
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (shouldIgnoreModeShortcut(event)) {
+        return;
+      }
+
+      const shortcutMode = modeForShortcut(event);
+      if (shortcutMode) {
+        event.preventDefault();
+        temporaryPanModeRef.current = null;
+        applyMode(shortcutMode);
+        return;
+      }
+
+      if (event.code === 'Space' && !event.repeat && !event.shiftKey && modeRef.current !== 'pan') {
+        event.preventDefault();
+        temporaryPanModeRef.current = modeRef.current;
+        applyMode('pan');
+      }
+    };
+
+    const onKeyUp = (event: KeyboardEvent): void => {
+      if (event.code !== 'Space') {
+        return;
+      }
+
+      const restoreMode = temporaryPanModeRef.current;
+      if (!restoreMode) {
+        return;
+      }
+
+      event.preventDefault();
+      temporaryPanModeRef.current = null;
+      applyMode(restoreMode);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
 
   const changeZoom = (nextZoom: number): void => {
     setZoomState((current) => ({ ...current, zoom: nextZoom }));
@@ -175,42 +231,38 @@ export const HyperbolicStage = () => {
         </div>
         <fieldset className="mode-buttons" data-testid="mode-controls">
           <legend className="visually-hidden">Mode</legend>
-          <button
-            data-mode="pan"
-            className={mode === 'pan' ? 'active' : undefined}
-            type="button"
+          <ModeButton
+            active={mode === 'pan'}
+            icon={<Hand size={14} aria-hidden />}
+            label="Navigate"
+            mode="pan"
+            shortcut="V, 1, Esc; hold Space"
             onClick={() => changeMode('pan')}
-          >
-            <Hand size={14} aria-hidden />
-            Navigate
-          </button>
-          <button
-            data-mode="edit"
-            className={mode === 'edit' ? 'active' : undefined}
-            type="button"
+          />
+          <ModeButton
+            active={mode === 'edit'}
+            icon={<Type size={14} aria-hidden />}
+            label="Text"
+            mode="edit"
+            shortcut="T, 2"
             onClick={() => changeMode('edit')}
-          >
-            <Type size={14} aria-hidden />
-            Text
-          </button>
-          <button
-            data-mode="move"
-            className={mode === 'move' ? 'active' : undefined}
-            type="button"
+          />
+          <ModeButton
+            active={mode === 'move'}
+            icon={<Move size={14} aria-hidden />}
+            label="Move"
+            mode="move"
+            shortcut="M, 3"
             onClick={() => changeMode('move')}
-          >
-            <Move size={14} aria-hidden />
-            Move
-          </button>
-          <button
-            data-mode="arrow"
-            className={mode === 'arrow' ? 'active' : undefined}
-            type="button"
+          />
+          <ModeButton
+            active={mode === 'arrow'}
+            icon={<Spline size={14} aria-hidden />}
+            label="Arrow"
+            mode="arrow"
+            shortcut="A, 4"
             onClick={() => changeMode('arrow')}
-          >
-            <Spline size={14} aria-hidden />
-            Arrow
-          </button>
+          />
         </fieldset>
       </div>
       <div className="zoom-control" data-testid="zoom-controls">
@@ -232,5 +284,66 @@ export const HyperbolicStage = () => {
         </button>
       </div>
     </div>
+  );
+};
+
+type ModeButtonProps = Readonly<{
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  mode: InteractionMode;
+  onClick: () => void;
+  shortcut: string;
+}>;
+
+const ModeButton = ({ active, icon, label, mode, onClick, shortcut }: ModeButtonProps) => (
+  <Tooltip label={`${label} (${shortcut})`}>
+    <button
+      data-mode={mode}
+      className={active ? 'active' : undefined}
+      type="button"
+      onClick={onClick}
+    >
+      {icon}
+      {label}
+    </button>
+  </Tooltip>
+);
+
+const SHORTCUT_MODES: Readonly<Record<string, InteractionMode>> = {
+  '1': 'pan',
+  '2': 'edit',
+  '3': 'move',
+  '4': 'arrow',
+  a: 'arrow',
+  escape: 'pan',
+  m: 'move',
+  t: 'edit',
+  v: 'pan',
+};
+
+const modeForShortcut = (event: KeyboardEvent): InteractionMode | null => {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return null;
+  }
+
+  return SHORTCUT_MODES[event.key.toLowerCase()] ?? null;
+};
+
+const shouldIgnoreModeShortcut = (event: KeyboardEvent): boolean => {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return true;
+  }
+
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
   );
 };

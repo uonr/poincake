@@ -47,6 +47,8 @@ type PointerMode =
   | 'arrow-draw';
 
 const ARROW_DEFAULT_COLOR: NoteColor = 'c1';
+const MAX_ZOOM = 2.5;
+const WHEEL_ZOOM_STEP = 600;
 
 type AnchoredPoint = Readonly<{
   anchor: GridAnchor;
@@ -314,7 +316,7 @@ export class HyperbolicCanvasController {
   }
 
   setZoom(zoom: number): void {
-    this.zoom = Math.max(zoom, this.minZoom);
+    this.zoom = this.clampZoom(zoom);
     this.emitZoomState();
     this.requestRender();
   }
@@ -429,10 +431,14 @@ export class HyperbolicCanvasController {
     this.minZoom = minZoom;
 
     if (wasAtMinimum || this.zoom < minZoom) {
-      this.zoom = minZoom;
+      this.zoom = this.clampZoom(minZoom);
     }
 
     this.emitZoomState();
+  }
+
+  private clampZoom(zoom: number): number {
+    return Math.min(MAX_ZOOM, Math.max(zoom, this.minZoom));
   }
 
   private bindPointerEvents(): void {
@@ -442,6 +448,7 @@ export class HyperbolicCanvasController {
     this.listen<PointerEvent>(this.options.stage, 'pointermove', (event) =>
       this.onPointerMove(event),
     );
+    this.listen<WheelEvent>(this.options.stage, 'wheel', (event) => this.onWheel(event));
     this.listen<PointerEvent>(this.options.stage, 'pointerup', (event) => this.endPointer(event));
     this.listen(this.options.stage, 'pointercancel', () => this.endPointer());
     this.listen(this.options.stage, 'pointerleave', () => {
@@ -482,20 +489,7 @@ export class HyperbolicCanvasController {
 
   private onPointerDown(event: PointerEvent): void {
     const target = event.target instanceof Element ? event.target : null;
-    if (
-      target?.closest(
-        [
-          '[data-testid="note-editor"]',
-          '[data-testid="arrow-inspector"]',
-          '[data-testid="inspector"]',
-          '[data-testid="app-menu"]',
-          '[data-testid="history-controls"]',
-          '[data-testid="mode-controls"]',
-          '[data-testid="zoom-controls"]',
-          '[data-testid="coordinate-indicator"]',
-        ].join(', '),
-      )
-    ) {
+    if (isCanvasControlTarget(target)) {
       return;
     }
 
@@ -537,6 +531,17 @@ export class HyperbolicCanvasController {
     this.options.stage.setPointerCapture(event.pointerId);
     this.options.stage.classList.add('dragging');
     this.options.stage.classList.remove('near-snap');
+  }
+
+  private onWheel(event: WheelEvent): void {
+    const target = event.target instanceof Element ? event.target : null;
+    if (isCanvasControlTarget(target) || this.noteLayer.getNoteIdFromEventTarget(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextZoom = this.zoom * 2 ** (-event.deltaY / WHEEL_ZOOM_STEP);
+    this.setZoom(nextZoom);
   }
 
   private onPointerMove(event: PointerEvent): void {
@@ -1488,3 +1493,19 @@ const nextNumericId = (items: readonly { id: string }[], prefix: string): number
     return value === undefined ? next : Math.max(next, Number(value) + 1);
   }, 0);
 };
+
+const isCanvasControlTarget = (target: Element | null): boolean =>
+  Boolean(
+    target?.closest(
+      [
+        '[data-testid="note-editor"]',
+        '[data-testid="arrow-inspector"]',
+        '[data-testid="inspector"]',
+        '[data-testid="app-menu"]',
+        '[data-testid="history-controls"]',
+        '[data-testid="mode-controls"]',
+        '[data-testid="zoom-controls"]',
+        '[data-testid="coordinate-indicator"]',
+      ].join(', '),
+    ),
+  );

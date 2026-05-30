@@ -19,6 +19,64 @@ test('opens the app menu with a source link', async ({ page }) => {
   await expect(source).toHaveAttribute('href', 'https://github.com/uonr/poincake');
 });
 
+test('zooms with the wheel over blank canvas space', async ({ page }) => {
+  await page.goto('/');
+
+  const point = await findBlankStagePoint(page);
+  const zoomValue = page.locator('#zoom-val');
+  const before = await zoomValue.textContent();
+
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.wheel(0, -300);
+
+  await expect(zoomValue).not.toHaveText(before ?? '');
+});
+
+test('switches modes with keyboard shortcuts and advertises them in tooltips', async ({ page }) => {
+  await page.goto('/');
+
+  const stage = page.locator('#stage');
+  const navigateButton = page.getByRole('button', { name: 'Navigate' });
+  await navigateButton.hover();
+  await expect(page.getByRole('tooltip')).toContainText('Navigate (V, 1, Esc; hold Space)');
+  await expect
+    .poll(async () => {
+      const buttonBox = await navigateButton.boundingBox();
+      const tooltipBox = await page.getByRole('tooltip').boundingBox();
+      return Math.round((tooltipBox?.x ?? 0) - (buttonBox?.x ?? 0));
+    })
+    .toBe(0);
+
+  await page.getByRole('button', { name: 'Text' }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Text (T, 2)');
+
+  await page.getByRole('button', { name: 'Move' }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Move (M, 3)');
+
+  await page.getByRole('button', { name: 'Arrow' }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Arrow (A, 4)');
+
+  await page.keyboard.press('T');
+  await expect(stage).toHaveClass(/mode-edit/);
+
+  await page.keyboard.press('M');
+  await expect(stage).toHaveClass(/mode-move/);
+
+  await page.keyboard.press('A');
+  await expect(stage).toHaveClass(/mode-arrow/);
+
+  await page.keyboard.press('Escape');
+  await expect(stage).toHaveClass(/mode-pan/);
+
+  await page.keyboard.press('2');
+  await expect(stage).toHaveClass(/mode-edit/);
+
+  await page.keyboard.down('Space');
+  await expect(stage).toHaveClass(/mode-pan/);
+  await page.keyboard.up('Space');
+  await expect(stage).toHaveClass(/mode-edit/);
+});
+
 test('edits the active note through the React overlay', async ({ page }) => {
   await page.goto('/');
 
@@ -144,4 +202,42 @@ const findSnapPoint = async (
   }
 
   throw new Error('Could not find a snapped grid point near the viewport center.');
+};
+
+const findBlankStagePoint = async (
+  page: import('@playwright/test').Page,
+): Promise<{ x: number; y: number }> => {
+  const point = await page.locator('#stage').evaluate((stage) => {
+    const box = stage.getBoundingClientRect();
+    for (let y = box.top + 80; y < box.bottom - 80; y += 32) {
+      for (let x = box.left + 80; x < box.right - 80; x += 32) {
+        const target = document.elementFromPoint(x, y);
+        if (
+          target instanceof Element &&
+          target.closest(
+            [
+              '[data-testid="note"]',
+              '[data-testid="app-menu"]',
+              '[data-testid="history-controls"]',
+              '[data-testid="mode-controls"]',
+              '[data-testid="zoom-controls"]',
+              '[data-testid="coordinate-indicator"]',
+            ].join(', '),
+          )
+        ) {
+          continue;
+        }
+
+        return { x, y };
+      }
+    }
+
+    return null;
+  });
+
+  if (!point) {
+    throw new Error('Could not find blank stage space.');
+  }
+
+  return point;
 };

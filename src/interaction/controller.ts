@@ -1,3 +1,4 @@
+import { arrowNavigationTarget } from '../core/arrowNavigation';
 import type { ArrowSelection } from '../core/arrowSelection';
 import { type CoordinateTarget, parseGridAnchorCoordinate } from '../core/coordinateIndicator';
 import type { EditingSession } from '../core/editingSession';
@@ -438,7 +439,7 @@ export class HyperbolicCanvasController {
     this.listen<PointerEvent>(this.options.stage, 'pointermove', (event) =>
       this.onPointerMove(event),
     );
-    this.listen(this.options.stage, 'pointerup', () => this.endPointer());
+    this.listen<PointerEvent>(this.options.stage, 'pointerup', (event) => this.endPointer(event));
     this.listen(this.options.stage, 'pointercancel', () => this.endPointer());
     this.listen(this.options.stage, 'pointerleave', () => {
       this.options.stage.classList.remove('near-snap');
@@ -846,7 +847,7 @@ export class HyperbolicCanvasController {
     this.options.onHistoryStateChange?.(this.history.state);
   }
 
-  private endPointer(): void {
+  private endPointer(event?: PointerEvent): void {
     if (this.pointerMode === 'idle' || this.pointerMode === 'editing' || this.flying) {
       return;
     }
@@ -863,6 +864,10 @@ export class HyperbolicCanvasController {
 
     if (!this.didMove) {
       if (this.pointerMode === 'pending-pan' && this.dragStartPoint) {
+        if (this.interactionMode === 'pan' && this.navigateClickedArrow(event)) {
+          this.resetDragState();
+          return;
+        }
         if (this.interactionMode === 'edit' && this.downPosition) {
           const viewport = this.viewport();
           const snapped = this.world.grid.snapScreenPoint(
@@ -912,6 +917,43 @@ export class HyperbolicCanvasController {
     this.pointerMode = 'idle';
     this.resetDragState();
     this.requestRender();
+  }
+
+  private navigateClickedArrow(event: PointerEvent | undefined): boolean {
+    const position: DiskPoint | null = event ? [event.clientX, event.clientY] : this.downPosition;
+    if (!position) {
+      return false;
+    }
+
+    const viewport = this.viewport();
+    const arrowId = arrowHitTest(
+      this.arrowGeometries(),
+      this.view,
+      viewport,
+      position[0] - viewport.left,
+      position[1] - viewport.top,
+    );
+    if (!arrowId) {
+      return false;
+    }
+
+    const arrow = this.world.arrows.find((candidate) => candidate.id === arrowId);
+    if (!arrow) {
+      return false;
+    }
+
+    const target = arrowNavigationTarget(
+      arrow,
+      this.world.grid.worldPointForAnchor(arrow.from),
+      this.world.grid.worldPointForAnchor(arrow.to),
+      this.view,
+    );
+    if (!target) {
+      return true;
+    }
+
+    this.flyTo(target);
+    return true;
   }
 
   private openNoteLink(note: Note): boolean {

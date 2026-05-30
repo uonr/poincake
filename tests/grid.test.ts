@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { abs2 } from '../src/geometry/complex';
-import { applyTransform, identityTransform, transformFromPointPair } from '../src/geometry/mobius';
+import {
+  applyTransform,
+  identityTransform,
+  invertTransform,
+  transformFromPointPair,
+} from '../src/geometry/mobius';
 import { AnchoredGrid } from '../src/grid/anchoredGrid';
 import { generateHyperbolicTiling } from '../src/grid/hyperbolicTiling';
 import { projectDiskPoint, type Viewport } from '../src/render/viewport';
@@ -104,6 +109,42 @@ describe('hyperbolic tiling', () => {
 
     expect(grid.tiling).toBe(tiling);
     expect(grid.tiling.coarseGridIndex).toBe(tiling.coarseGridIndex);
+  });
+
+  it('keeps the grid populated after panning far across the plane', () => {
+    const tiling = generateHyperbolicTiling();
+    const grid = new AnchoredGrid(tiling);
+    const drawRadius = Math.sqrt(0.94 * 0.94);
+
+    // One sustained pan reaches the reanchor budget; repeating it walks the view
+    // far enough across the hyperbolic plane to run off the un-snapped tiling.
+    const panStep = transformFromPointPair([0, 0], [0, 0.5]);
+
+    const baseline = grid.visiblePoints(identityTransform, drawRadius).points.length;
+    expect(baseline).toBeGreaterThan(1000);
+
+    let worst = baseline;
+    for (let i = 0; i < 20; i += 1) {
+      grid.reanchor(panStep);
+      worst = Math.min(worst, grid.visiblePoints(identityTransform, drawRadius).points.length);
+    }
+
+    // Without symmetry-snapping the count collapsed toward zero (~160 after 8 pans).
+    expect(worst).toBeGreaterThan(1000);
+  });
+
+  it('snaps the grid-local view-center back near the origin on reanchor', () => {
+    const tiling = generateHyperbolicTiling();
+    const grid = new AnchoredGrid(tiling);
+    const panStep = transformFromPointPair([0, 0], [0, 0.5]);
+
+    for (let i = 0; i < 20; i += 1) {
+      grid.reanchor(panStep);
+    }
+
+    const view = grid.visiblePoints(identityTransform, 1);
+    const viewCenter = applyTransform(invertTransform(view.transform), [0, 0]);
+    expect(abs2(viewCenter)).toBeLessThan(0.7 * 0.7);
   });
 
   it('snaps to coarse grid points', () => {

@@ -207,6 +207,19 @@ body {
   text-decoration: underline;
 }
 
+.item[data-note-content-kind="coordinate"]:not(.as-dot):not(.as-pill-h):not(.as-pill-v) {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  line-height: 1;
+}
+
+.note-coordinate-icon {
+  height: 24px;
+  pointer-events: none;
+  width: 24px;
+}
+
 .item.as-dot {
   background: currentColor;
   border-radius: 50%;

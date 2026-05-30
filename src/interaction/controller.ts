@@ -1,5 +1,5 @@
 import type { ArrowSelection } from '../core/arrowSelection';
-import type { CoordinateTarget } from '../core/coordinateIndicator';
+import { type CoordinateTarget, parseGridAnchorCoordinate } from '../core/coordinateIndicator';
 import type { EditingSession } from '../core/editingSession';
 import type { SelectionState } from '../core/selectionState';
 import { abs2 } from '../geometry/complex';
@@ -892,6 +892,10 @@ export class HyperbolicCanvasController {
             this.requestRender();
             return;
           }
+          if (this.interactionMode === 'pan' && this.flyToNoteCoordinate(note)) {
+            this.resetDragState();
+            return;
+          }
           if (this.interactionMode === 'edit') {
             this.startEdit(note);
             this.resetDragState();
@@ -917,6 +921,20 @@ export class HyperbolicCanvasController {
     }
 
     window.open(link.href, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+
+  private flyToNoteCoordinate(note: Note): boolean {
+    const anchor = parseGridAnchorCoordinate(noteDisplayText(note));
+    if (!anchor) {
+      return false;
+    }
+
+    try {
+      this.flyTo(this.world.grid.worldPointForAnchor(anchor));
+    } catch {
+      return false;
+    }
     return true;
   }
 

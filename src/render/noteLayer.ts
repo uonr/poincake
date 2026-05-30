@@ -1,3 +1,4 @@
+import { parseGridAnchorCoordinate } from '../core/coordinateIndicator';
 import { abs2 } from '../geometry/complex';
 import type { DiskPoint } from '../geometry/disk';
 import { applyTransform, type DiskTransform } from '../geometry/mobius';
@@ -56,8 +57,8 @@ export class NoteLayer {
       }
 
       const text = noteDisplayText(note);
-      if (element.textContent !== text && !element.classList.contains('editing')) {
-        element.textContent = text;
+      if (!element.classList.contains('editing')) {
+        renderNoteContent(element, text);
       }
     }
   }
@@ -186,3 +187,25 @@ const clampForProjection = (point: DiskPoint): DiskPoint => {
 
 const mergedDotCell = (x: number, y: number): string =>
   `${Math.round(x / DOT_MERGE_CELL)},${Math.round(y / DOT_MERGE_CELL)}`;
+
+const renderNoteContent = (element: HTMLDivElement, text: string): void => {
+  const coordinate = parseGridAnchorCoordinate(text);
+  element.dataset.noteContentKind = coordinate ? 'coordinate' : 'text';
+  element.title = coordinate ? text.trim() : '';
+
+  if (coordinate) {
+    if (element.firstElementChild?.classList.contains('note-coordinate-icon')) {
+      return;
+    }
+
+    element.textContent = '';
+    element.insertAdjacentHTML('afterbegin', LAND_PLOT_ICON);
+    return;
+  }
+
+  if (element.textContent !== text) {
+    element.textContent = text;
+  }
+};
+
+const LAND_PLOT_ICON = `<svg class="note-coordinate-icon" aria-label="Coordinate" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 8 6-3-6-3v10"/><path d="m8 11.99-5.5 3.14a1 1 0 0 0 0 1.74l8.5 4.86a2 2 0 0 0 2 0l8.5-4.86a1 1 0 0 0 0-1.74L16 12"/><path d="m6.49 12.85 11.02 6.3"/><path d="M17.51 12.85 6.5 19.15"/></svg>`;

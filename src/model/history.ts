@@ -22,6 +22,11 @@ export class WorldHistory {
     this.redoStack.length = 0;
   }
 
+  clear(): void {
+    this.undoStack.length = 0;
+    this.redoStack.length = 0;
+  }
+
   undo(world: HyperbolicWorldState): boolean {
     const patch = this.undoStack.pop();
     if (!patch) {

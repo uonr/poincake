@@ -26,4 +26,12 @@ export class HyperbolicWorldState {
 
     return transientPoints.map((point) => (point ? applyTransform(transform, point) : null));
   }
+
+  replaceContent(notes: readonly Note[], arrows: readonly Arrow[]): void {
+    this.notes.length = 0;
+    this.notes.push(...notes);
+    this.arrows.length = 0;
+    this.arrows.push(...arrows);
+    this.homePoint = [0, 0];
+  }
 }

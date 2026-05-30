@@ -99,6 +99,29 @@ export const HyperbolicStage = () => {
     controllerRef.current?.commitSelectedArrowLabel(label);
   };
 
+  const exportContent = (): void => {
+    const text = controllerRef.current?.exportWorldFileText();
+    if (!text) {
+      return;
+    }
+
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `poincake-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importContent = (text: string): void => {
+    try {
+      controllerRef.current?.importWorldFileText(text);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Import failed.');
+    }
+  };
+
   return (
     <div id="stage" className={`mode-${mode}`} ref={stageRef}>
       <canvas id="grid" ref={canvasRef} />
@@ -123,7 +146,7 @@ export const HyperbolicStage = () => {
       ) : null}
       <CoordinateIndicator target={coordinateTarget} />
       <div className="top-left-controls">
-        <AppMenu />
+        <AppMenu onExport={exportContent} onImport={importContent} />
         <div className="history-controls" data-testid="history-controls">
           <button
             type="button"

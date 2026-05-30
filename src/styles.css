@@ -570,8 +570,11 @@ body {
 
 .app-menu-item {
   align-items: center;
+  background: transparent;
+  border: 0;
   border-radius: 6px;
   color: var(--text);
+  cursor: pointer;
   display: flex;
   font-size: 13px;
   gap: 8px;
@@ -579,6 +582,7 @@ body {
   padding: 7px 9px;
   text-decoration: none;
   white-space: nowrap;
+  width: 100%;
 }
 
 .app-menu-item:hover {

@@ -18,6 +18,7 @@ import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../
 import { type HistoryState, WorldHistory } from '../model/history';
 import { type Note, type NoteColor, noteColor, noteDisplayText } from '../model/note';
 import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
+import { parseWorldFileText, stringifyWorldFile } from '../model/worldFile';
 import { HyperbolicWorldState } from '../model/worldState';
 import { type ArrowGeometry, arrowHitTest, arrowMidpoint } from '../render/arrowGeometry';
 import { type ArrowDraft, ArrowLayer, type RenderedArrow } from '../render/arrowLayer';
@@ -320,6 +321,53 @@ export class HyperbolicCanvasController {
     }
 
     this.flyTo(this.world.home);
+  }
+
+  exportWorldFileText(): string {
+    return stringifyWorldFile(this.world);
+  }
+
+  importWorldFileText(text: string): void {
+    const content = parseWorldFileText(text);
+
+    if (this.editingNoteId) {
+      this.cancelEditing();
+    }
+
+    this.cancelArrowGesture();
+    this.options.stage.classList.remove('dragging', 'item-drag', 'near-snap');
+    this.world.grid.restoreChartSnapshots(content.charts);
+    this.world.replaceContent(content.notes, content.arrows);
+    this.history.clear();
+
+    this.view = identityTransform;
+    this.pointerMode = 'idle';
+    this.dragStartPoint = null;
+    this.downPosition = null;
+    this.didMove = false;
+    this.dragNoteId = null;
+    this.selectedNoteId = null;
+    this.hoveredNoteId = null;
+    this.draggingNoteId = null;
+    this.dragMoveBefore = null;
+    this.editingNoteId = null;
+    this.editingVisible = false;
+    this.pendingNoteId = null;
+    this.arrowFrom = null;
+    this.draftArrowTo = null;
+    this.pendingArrowHitId = null;
+    this.selectedArrowId = null;
+    this.hoveredArrowId = null;
+    this.nextNoteId = nextNumericId(content.notes, 'note');
+    this.nextArrowId = nextNumericId(content.arrows, 'arrow');
+
+    this.noteLayer.sync(this.world.notes);
+    this.options.onEditingSessionChange?.(null);
+    this.options.onArrowSelectionChange?.(null);
+    this.emitSelection();
+    this.emitCoordinateTarget();
+    this.emitHistoryState();
+    this.requestRender();
   }
 
   private initZoom(): void {
@@ -1300,3 +1348,11 @@ export class HyperbolicCanvasController {
     this.emitEditingSession(viewport);
   }
 }
+
+const nextNumericId = (items: readonly { id: string }[], prefix: string): number => {
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
+  return items.reduce((next, item) => {
+    const value = pattern.exec(item.id)?.[1];
+    return value === undefined ? next : Math.max(next, Number(value) + 1);
+  }, 0);
+};

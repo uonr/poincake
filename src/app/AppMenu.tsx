@@ -1,12 +1,18 @@
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react';
-import { Menu } from 'lucide-react';
+import { Download, Menu, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 const SOURCE_URL = 'https://github.com/uonr/poincake';
 
-export const AppMenu = () => {
+type AppMenuProps = Readonly<{
+  onExport: () => void;
+  onImport: (text: string) => void;
+}>;
+
+export const AppMenu = ({ onExport, onImport }: AppMenuProps) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const { refs, floatingStyles } = useFloating({
     middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
     open,
@@ -38,6 +44,31 @@ export const AppMenu = () => {
     };
   }, [open]);
 
+  const exportContent = (): void => {
+    onExport();
+    setOpen(false);
+  };
+
+  const openImportPicker = (): void => {
+    if (importInputRef.current) {
+      importInputRef.current.value = '';
+      importInputRef.current.click();
+    }
+  };
+
+  const importContent = async (file: File | undefined): Promise<void> => {
+    if (!file) {
+      return;
+    }
+
+    try {
+      onImport(await file.text());
+      setOpen(false);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Import failed.');
+    }
+  };
+
   return (
     <div
       className="app-menu"
@@ -58,6 +89,19 @@ export const AppMenu = () => {
       </button>
       {open ? (
         <div className="app-menu-popover" ref={refs.setFloating} role="menu" style={floatingStyles}>
+          <button className="app-menu-item" type="button" role="menuitem" onClick={exportContent}>
+            <Download size={14} aria-hidden />
+            Export
+          </button>
+          <button
+            className="app-menu-item"
+            type="button"
+            role="menuitem"
+            onClick={openImportPicker}
+          >
+            <Upload size={14} aria-hidden />
+            Import
+          </button>
           <a
             className="app-menu-item"
             href={SOURCE_URL}
@@ -71,6 +115,16 @@ export const AppMenu = () => {
           </a>
         </div>
       ) : null}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="visually-hidden"
+        tabIndex={-1}
+        onChange={(event) => {
+          void importContent(event.currentTarget.files?.[0]);
+        }}
+      />
     </div>
   );
 };

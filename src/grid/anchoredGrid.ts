@@ -67,6 +67,10 @@ export class AnchoredGrid {
   }
 
   restoreChartSnapshots(snapshots: readonly GridChartSnapshot[]): void {
+    this.gridToWorld = identityTransform;
+    this.netSymmetry = identityTransform;
+    this.currentChartId = ROOT_CHART_ID;
+    this.nextChartId = 1;
     this.chartGraph.clear();
     this.chartGraph.set(ROOT_CHART_ID, { id: ROOT_CHART_ID, parentId: null, transition: rootWalk });
     for (const snapshot of snapshots) {

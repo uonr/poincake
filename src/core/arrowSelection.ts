@@ -1,4 +1,4 @@
-import type { ArrowId } from '../model/arrow';
+import type { ArrowHeadMode, ArrowId } from '../model/arrow';
 import type { NoteColor } from '../model/note';
 import type { ScreenPoint } from './editingSession';
 
@@ -8,5 +8,6 @@ export type ArrowSelection = Readonly<{
   arrowId: ArrowId;
   label: string;
   color: NoteColor;
+  headMode: ArrowHeadMode;
   screenPosition: ScreenPoint;
 }>;

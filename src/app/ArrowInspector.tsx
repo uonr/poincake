@@ -1,6 +1,7 @@
-import { Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, ArrowRight, Minus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ArrowSelection } from '../core/arrowSelection';
+import type { ArrowHeadMode } from '../model/arrow';
 import type { NoteColor } from '../model/note';
 import { ColorSwatches } from './ColorSwatches';
 import { useCanvasFloatingPosition } from './useCanvasFloatingPosition';
@@ -8,6 +9,7 @@ import { useCanvasFloatingPosition } from './useCanvasFloatingPosition';
 type ArrowInspectorProps = Readonly<{
   selection: ArrowSelection;
   onChangeColor: (color: NoteColor) => void;
+  onChangeHeadMode: (mode: ArrowHeadMode) => void;
   onChangeLabel: (label: string) => void;
   onDelete: () => void;
 }>;
@@ -15,6 +17,7 @@ type ArrowInspectorProps = Readonly<{
 export const ArrowInspector = ({
   selection,
   onChangeColor,
+  onChangeHeadMode,
   onChangeLabel,
   onDelete,
 }: ArrowInspectorProps) => {
@@ -57,6 +60,24 @@ export const ArrowInspector = ({
           }
         }}
       />
+      <fieldset className="arrow-endpoint-controls" aria-label="Arrow endpoints">
+        <legend className="visually-hidden">Arrow endpoints</legend>
+        {HEAD_MODE_OPTIONS.map((option) => {
+          const Icon = option.icon;
+          return (
+            <button
+              key={option.mode}
+              type="button"
+              className={selection.headMode === option.mode ? 'active' : undefined}
+              aria-label={option.label}
+              title={option.label}
+              onClick={() => onChangeHeadMode(option.mode)}
+            >
+              <Icon size={14} aria-hidden />
+            </button>
+          );
+        })}
+      </fieldset>
       <div className="arrow-inspector-tools">
         <ColorSwatches label="Arrow color" value={selection.color} onChange={onChangeColor} />
         <button
@@ -72,3 +93,14 @@ export const ArrowInspector = ({
     </div>
   );
 };
+
+const HEAD_MODE_OPTIONS: readonly {
+  mode: ArrowHeadMode;
+  label: string;
+  icon: typeof Minus;
+}[] = [
+  { mode: 'none', label: 'No arrowheads', icon: Minus },
+  { mode: 'start', label: 'Arrowhead at start', icon: ArrowLeft },
+  { mode: 'end', label: 'Arrowhead at end', icon: ArrowRight },
+  { mode: 'both', label: 'Arrowheads at both ends', icon: ArrowLeftRight },
+];

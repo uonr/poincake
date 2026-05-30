@@ -26,6 +26,7 @@ export type WorldFile = Readonly<{
 }>;
 
 const noteColorSchema = z.enum(['c1', 'c2', 'c3', 'c4']);
+const arrowHeadModeSchema = z.enum(['none', 'start', 'end', 'both']);
 const edgeIndexSchema = z.union([z.literal(0), z.literal(1), z.literal(2)]);
 
 const reducedWalkSchema = z.array(edgeIndexSchema).transform((walk) => reduceWalk(walk));
@@ -96,6 +97,7 @@ const arrowSchema = z
     appearance: z
       .object({
         color: noteColorSchema,
+        headMode: arrowHeadModeSchema,
       })
       .strict(),
     createdAt: z.number().finite(),

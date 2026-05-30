@@ -27,7 +27,7 @@ const makeArrow = (world: HyperbolicWorldState, id: string): Arrow => {
     from,
     to,
     label: '',
-    appearance: { color: 'c1' },
+    appearance: { color: 'c1', headMode: 'end' },
     createdAt: 1,
     updatedAt: 1,
   };
@@ -78,18 +78,18 @@ describe('arrow commands', () => {
       type: 'update-arrow',
       arrowId: 'arrow-0',
       label: 'depends on',
-      appearance: { color: 'c3' },
+      appearance: { color: 'c3', headMode: 'both' },
       updatedAt: 9,
     });
 
     expect(world.arrows[0]?.label).toBe('depends on');
-    expect(world.arrows[0]?.appearance.color).toBe('c3');
+    expect(world.arrows[0]?.appearance).toEqual({ color: 'c3', headMode: 'both' });
     expect(world.arrows[0]?.updatedAt).toBe(9);
     expect(result.patch).toEqual({
       type: 'update-arrow',
       arrowId: 'arrow-0',
-      before: { label: '', appearance: { color: 'c1' }, updatedAt: 1 },
-      after: { label: 'depends on', appearance: { color: 'c3' }, updatedAt: 9 },
+      before: { label: '', appearance: { color: 'c1', headMode: 'end' }, updatedAt: 1 },
+      after: { label: 'depends on', appearance: { color: 'c3', headMode: 'both' }, updatedAt: 9 },
     });
 
     if (!result.patch) {
@@ -111,7 +111,7 @@ describe('arrow commands', () => {
       type: 'update-arrow',
       arrowId: 'missing',
       label: 'x',
-      appearance: { color: 'c2' },
+      appearance: { color: 'c2', headMode: 'none' },
       updatedAt: 2,
     });
     expect(result.patch).toBeUndefined();

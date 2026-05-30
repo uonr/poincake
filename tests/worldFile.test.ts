@@ -37,6 +37,7 @@ const createWorld = () => {
     label: 'Link',
     appearance: {
       color: 'c3',
+      headMode: 'both',
     },
     createdAt: 3,
     updatedAt: 4,

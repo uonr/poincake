@@ -12,6 +12,7 @@ import {
   type InteractionMode,
   type ZoomState,
 } from '../interaction/controller';
+import type { ArrowHeadMode } from '../model/arrow';
 import type { HistoryState } from '../model/history';
 import type { NoteColor } from '../model/note';
 import type { NoteDraft } from '../model/noteDraft';
@@ -95,6 +96,10 @@ export const HyperbolicStage = () => {
     controllerRef.current?.setSelectedArrowColor(color);
   };
 
+  const changeArrowHeadMode = (headMode: ArrowHeadMode): void => {
+    controllerRef.current?.setSelectedArrowHeadMode(headMode);
+  };
+
   const changeArrowLabel = (label: string): void => {
     controllerRef.current?.commitSelectedArrowLabel(label);
   };
@@ -140,6 +145,7 @@ export const HyperbolicStage = () => {
           key={arrowSelection.arrowId}
           selection={arrowSelection}
           onChangeColor={changeArrowColor}
+          onChangeHeadMode={changeArrowHeadMode}
           onChangeLabel={changeArrowLabel}
           onDelete={() => controllerRef.current?.deleteSelectedArrow()}
         />

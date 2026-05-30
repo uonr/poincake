@@ -13,7 +13,7 @@ import {
 } from '../geometry/mobius';
 import type { AnchoredGrid } from '../grid/anchoredGrid';
 import { type GridAnchor, gridAnchorsEqual } from '../grid/tilingAddress';
-import type { Arrow } from '../model/arrow';
+import type { Arrow, ArrowHeadMode } from '../model/arrow';
 import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
 import { type HistoryState, WorldHistory } from '../model/history';
 import { type Note, type NoteColor, noteColor, noteDisplayText } from '../model/note';
@@ -1139,6 +1139,7 @@ export class HyperbolicCanvasController {
       label: '',
       appearance: {
         color: ARROW_DEFAULT_COLOR,
+        headMode: 'end',
       },
       createdAt: now,
       updatedAt: now,
@@ -1216,7 +1217,22 @@ export class HyperbolicCanvasController {
       type: 'update-arrow',
       arrowId: arrow.id,
       label: arrow.label,
-      appearance: { color },
+      appearance: { ...arrow.appearance, color },
+      updatedAt: Date.now(),
+    });
+    this.requestRender();
+  }
+
+  setSelectedArrowHeadMode(headMode: ArrowHeadMode): void {
+    const arrow = this.selectedArrow();
+    if (!arrow || arrow.appearance.headMode === headMode) {
+      return;
+    }
+    this.applyCommand({
+      type: 'update-arrow',
+      arrowId: arrow.id,
+      label: arrow.label,
+      appearance: { ...arrow.appearance, headMode },
       updatedAt: Date.now(),
     });
     this.requestRender();
@@ -1320,6 +1336,7 @@ export class HyperbolicCanvasController {
       arrowId: arrow.id,
       label: arrow.label,
       color: arrow.appearance.color,
+      headMode: arrow.appearance.headMode,
       screenPosition: {
         x: midpoint.x,
         y: midpoint.y,

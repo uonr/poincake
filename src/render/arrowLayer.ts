@@ -1,7 +1,7 @@
 import type { DiskPoint } from '../geometry/disk';
 import type { DiskTransform } from '../geometry/mobius';
-import type { Arrow } from '../model/arrow';
-import { arrowColor, arrowLabel } from '../model/arrow';
+import type { Arrow, ArrowHeadMode } from '../model/arrow';
+import { arrowColor, arrowHeadMode, arrowLabel } from '../model/arrow';
 import type { NoteColor } from '../model/note';
 import { polylineMidpoint, projectArrowGeodesic } from './arrowGeometry';
 import type { ProjectedPoint, Viewport } from './viewport';
@@ -85,6 +85,7 @@ export class ArrowLayer {
       this.strokeArrow(points, color, {
         alpha: 1,
         dashed: false,
+        headMode: arrowHeadMode(arrow),
         selected: arrow.id === options.selectedArrowId,
       });
       const label = arrowLabel(arrow);
@@ -98,6 +99,7 @@ export class ArrowLayer {
       this.strokeArrow(points, colorFor(draft.color), {
         alpha: 0.65,
         dashed: true,
+        headMode: 'end',
         selected: false,
       });
     }
@@ -106,7 +108,12 @@ export class ArrowLayer {
   private strokeArrow(
     points: readonly ProjectedPoint[],
     color: string,
-    options: Readonly<{ alpha: number; dashed: boolean; selected: boolean }>,
+    options: Readonly<{
+      alpha: number;
+      dashed: boolean;
+      headMode: ArrowHeadMode;
+      selected: boolean;
+    }>,
   ): void {
     if (points.length < 2) {
       return;
@@ -147,7 +154,12 @@ export class ArrowLayer {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    this.drawHead(points);
+    if (options.headMode === 'start' || options.headMode === 'both') {
+      this.drawHead(points, 'start');
+    }
+    if (options.headMode === 'end' || options.headMode === 'both') {
+      this.drawHead(points, 'end');
+    }
     ctx.globalAlpha = 1;
   }
 
@@ -170,12 +182,15 @@ export class ArrowLayer {
     ctx.fillText(text, at.x, at.y + 0.5);
   }
 
-  private drawHead(points: readonly ProjectedPoint[]): void {
-    const tip = points[points.length - 1];
+  private drawHead(points: readonly ProjectedPoint[], endpoint: 'start' | 'end'): void {
+    const tip = endpoint === 'start' ? points[0] : points[points.length - 1];
     // Walk back along the polyline to a point a head-length away so the head
     // aligns with the arc's tangent rather than a single tiny final segment.
     let anchor: ProjectedPoint | undefined;
-    for (let i = points.length - 2; i >= 0; i -= 1) {
+    const startIndex = endpoint === 'start' ? 1 : points.length - 2;
+    const endIndex = endpoint === 'start' ? points.length : -1;
+    const step = endpoint === 'start' ? 1 : -1;
+    for (let i = startIndex; i !== endIndex; i += step) {
       const candidate = points[i];
       if (!candidate || !tip) {
         continue;

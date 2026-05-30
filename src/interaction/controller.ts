@@ -18,6 +18,7 @@ import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../
 import { type HistoryState, WorldHistory } from '../model/history';
 import { type Note, type NoteColor, noteColor, noteDisplayText } from '../model/note';
 import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
+import { parseExternalLink } from '../model/noteLink';
 import { parseWorldFileText, stringifyWorldFile } from '../model/worldFile';
 import { HyperbolicWorldState } from '../model/worldState';
 import { type ArrowGeometry, arrowHitTest, arrowMidpoint } from '../render/arrowGeometry';
@@ -886,6 +887,11 @@ export class HyperbolicCanvasController {
       } else if (this.pointerMode === 'pending-item' && this.dragNoteId) {
         const note = this.world.notes.find((candidate) => candidate.id === this.dragNoteId);
         if (note) {
+          if (this.interactionMode === 'pan' && this.openNoteLink(note)) {
+            this.resetDragState();
+            this.requestRender();
+            return;
+          }
           if (this.interactionMode === 'edit') {
             this.startEdit(note);
             this.resetDragState();
@@ -902,6 +908,16 @@ export class HyperbolicCanvasController {
     this.pointerMode = 'idle';
     this.resetDragState();
     this.requestRender();
+  }
+
+  private openNoteLink(note: Note): boolean {
+    const link = parseExternalLink(noteDisplayText(note));
+    if (!link) {
+      return false;
+    }
+
+    window.open(link.href, '_blank', 'noopener,noreferrer');
+    return true;
   }
 
   private commitPendingNote(parsed: ParsedNoteDraft): void {

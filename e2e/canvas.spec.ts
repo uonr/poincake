@@ -44,6 +44,27 @@ test('copies the selected note coordinate from the indicator', async ({ page, co
     .toBe(shownCoordinate);
 });
 
+test('shows the arrow inspector after drawing an arrow', async ({ page }) => {
+  await page.goto('/');
+
+  const stage = page.locator('#stage');
+  const box = await stage.boundingBox();
+  if (!box) {
+    throw new Error('Stage is not laid out.');
+  }
+
+  await page.getByRole('button', { name: 'Arrow' }).click();
+  const from = await findSnapPoint(page, box);
+  const to = await findSnapPoint(page, box, from);
+
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.getByTestId('arrow-inspector')).toBeVisible();
+});
+
 test('creates a note from edit mode after distant panning', async ({ page }) => {
   await page.goto('/');
 
@@ -80,6 +101,7 @@ test('creates a note from edit mode after distant panning', async ({ page }) => 
 const findSnapPoint = async (
   page: import('@playwright/test').Page,
   box: { x: number; y: number; width: number; height: number },
+  exclude?: { x: number; y: number },
 ): Promise<{ x: number; y: number }> => {
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
@@ -91,6 +113,13 @@ const findSnapPoint = async (
         const y = centerY + dy;
         if (x < box.x || x > box.x + box.width || y < box.y || y > box.y + box.height) {
           continue;
+        }
+        if (exclude) {
+          const ex = x - exclude.x;
+          const ey = y - exclude.y;
+          if (ex * ex + ey * ey < 48 * 48) {
+            continue;
+          }
         }
 
         await page.mouse.move(x, y);

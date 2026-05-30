@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { EditingSession } from '../core/editingSession';
 import type { NoteDraft } from '../model/noteDraft';
 import { ColorSwatches } from './ColorSwatches';
+import { useCanvasFloatingPosition } from './useCanvasFloatingPosition';
 
 type NoteEditorOverlayProps = Readonly<{
   session: EditingSession;
@@ -19,6 +20,11 @@ export const NoteEditorOverlay = ({
 }: NoteEditorOverlayProps) => {
   const [draft, setDraft] = useState<NoteDraft>(session.draft);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const floating = useCanvasFloatingPosition({
+    offsetPx: 12,
+    placement: 'bottom',
+    position: session.screenPosition,
+  });
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -27,11 +33,10 @@ export const NoteEditorOverlay = ({
 
   return (
     <form
+      ref={floating.ref}
       className={`note-editor-overlay ${draft.color}`}
       data-testid="note-editor"
-      style={{
-        transform: `translate(${session.screenPosition.x}px, ${session.screenPosition.y}px) translate(-50%, -50%)`,
-      }}
+      style={floating.style}
       onSubmit={(event) => {
         event.preventDefault();
         onCommit(draft);

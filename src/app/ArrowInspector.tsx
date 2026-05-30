@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { ArrowSelection } from '../core/arrowSelection';
 import type { NoteColor } from '../model/note';
 import { ColorSwatches } from './ColorSwatches';
+import { useCanvasFloatingPosition } from './useCanvasFloatingPosition';
 
 type ArrowInspectorProps = Readonly<{
   selection: ArrowSelection;
@@ -18,6 +19,11 @@ export const ArrowInspector = ({
   onDelete,
 }: ArrowInspectorProps) => {
   const [label, setLabel] = useState(selection.label);
+  const floating = useCanvasFloatingPosition({
+    offsetPx: 14,
+    placement: 'top',
+    position: selection.screenPosition,
+  });
 
   const commitLabel = (): void => {
     onChangeLabel(label.trim());
@@ -25,11 +31,10 @@ export const ArrowInspector = ({
 
   return (
     <div
+      ref={floating.ref}
       className={`arrow-inspector ${selection.color}`}
       data-testid="arrow-inspector"
-      style={{
-        transform: `translate(${selection.screenPosition.x}px, ${selection.screenPosition.y}px) translate(-50%, calc(-100% - 14px))`,
-      }}
+      style={floating.style}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <input

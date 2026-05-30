@@ -435,6 +435,7 @@ export class HyperbolicCanvasController {
           '[data-testid="note-editor"]',
           '[data-testid="arrow-inspector"]',
           '[data-testid="inspector"]',
+          '[data-testid="app-menu"]',
           '[data-testid="history-controls"]',
           '[data-testid="mode-controls"]',
           '[data-testid="zoom-controls"]',

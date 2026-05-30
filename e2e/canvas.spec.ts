@@ -9,6 +9,16 @@ test('renders the hyperbolic canvas shell', async ({ page }) => {
   await expect(page.getByTestId('coordinate-indicator')).toBeHidden();
 });
 
+test('opens the app menu with a source link', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Open menu' }).click();
+
+  const source = page.getByRole('menuitem', { name: 'Source' });
+  await expect(source).toBeVisible();
+  await expect(source).toHaveAttribute('href', 'https://github.com/uonr/poincake');
+});
+
 test('edits the active note through the React overlay', async ({ page }) => {
   await page.goto('/');
 

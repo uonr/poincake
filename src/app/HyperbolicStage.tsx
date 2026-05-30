@@ -15,6 +15,7 @@ import {
 import type { HistoryState } from '../model/history';
 import type { NoteColor } from '../model/note';
 import type { NoteDraft } from '../model/noteDraft';
+import { AppMenu } from './AppMenu';
 import { ArrowInspector } from './ArrowInspector';
 import { CoordinateIndicator } from './CoordinateIndicator';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
@@ -122,6 +123,7 @@ export const HyperbolicStage = () => {
       ) : null}
       <CoordinateIndicator target={coordinateTarget} />
       <div className="top-left-controls">
+        <AppMenu />
         <div className="history-controls" data-testid="history-controls">
           <button
             type="button"

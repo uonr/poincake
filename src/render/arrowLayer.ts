@@ -3,7 +3,7 @@ import type { DiskTransform } from '../geometry/mobius';
 import type { Arrow, ArrowHeadMode } from '../model/arrow';
 import { arrowColor, arrowHeadMode, arrowLabel } from '../model/arrow';
 import type { NoteColor } from '../model/note';
-import { polylineMidpoint, projectArrowGeodesic } from './arrowGeometry';
+import { collapsedArrowDot, polylineMidpoint, projectArrowGeodesic } from './arrowGeometry';
 import type { ProjectedPoint, Viewport } from './viewport';
 
 const LINE_WIDTH = 2;
@@ -12,6 +12,8 @@ const SELECTED_HALO_WIDTH = 8;
 const SELECTED_HALO_ALPHA = 0.22;
 const HEAD_LENGTH = 12;
 const HEAD_HALF_ANGLE = 0.42;
+const DOT_RADIUS = 3;
+const DOT_OPACITY = 0.72;
 const LABEL_FONT = '500 13px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
 const LABEL_PADDING_X = 6;
 const LABEL_PADDING_Y = 3;
@@ -80,8 +82,14 @@ export class ArrowLayer {
 
     for (const rendered of arrows) {
       const { arrow } = rendered;
-      const points = projectArrowGeodesic(rendered.from, rendered.to, view, viewport);
       const color = colorFor(arrowColor(arrow));
+      const dot = collapsedArrowDot(rendered.from, rendered.to, view, viewport);
+      if (dot) {
+        this.drawDot(dot, color, arrow.id === options.selectedArrowId);
+        continue;
+      }
+
+      const points = projectArrowGeodesic(rendered.from, rendered.to, view, viewport);
       this.strokeArrow(points, color, {
         alpha: 1,
         dashed: false,
@@ -95,14 +103,38 @@ export class ArrowLayer {
     }
 
     if (draft) {
+      const color = colorFor(draft.color);
+      const dot = collapsedArrowDot(draft.from, draft.to, view, viewport);
+      if (dot) {
+        this.drawDot(dot, color, false, 0.65);
+        return;
+      }
+
       const points = projectArrowGeodesic(draft.from, draft.to, view, viewport);
-      this.strokeArrow(points, colorFor(draft.color), {
+      this.strokeArrow(points, color, {
         alpha: 0.65,
         dashed: true,
         headMode: 'end',
         selected: false,
       });
     }
+  }
+
+  private drawDot(at: ProjectedPoint, color: string, selected: boolean, alpha = DOT_OPACITY): void {
+    const ctx = this.ctx;
+    ctx.fillStyle = color;
+    if (selected) {
+      ctx.globalAlpha = SELECTED_HALO_ALPHA;
+      ctx.beginPath();
+      ctx.arc(at.x, at.y, SELECTED_HALO_WIDTH / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, DOT_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   private strokeArrow(

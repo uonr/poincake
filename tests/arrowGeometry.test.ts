@@ -4,6 +4,7 @@ import {
   type ArrowGeometry,
   arrowHitTest,
   arrowMidpoint,
+  collapsedArrowDot,
   projectArrowGeodesic,
 } from '../src/render/arrowGeometry';
 import type { Viewport } from '../src/render/viewport';
@@ -48,5 +49,25 @@ describe('arrow geometry', () => {
     expect(arrowHitTest([arrow], identityTransform, viewport, 400, 350)).toBeNull();
     // Beyond the segment ends, too.
     expect(arrowHitTest([arrow], identityTransform, viewport, 520, 300)).toBeNull();
+  });
+
+  it('collapses nearby far-boundary endpoints into a dot', () => {
+    const dot = collapsedArrowDot([0.98, 0], [0.981, 0.01], identityTransform, viewport);
+
+    expect(dot?.x).toBeCloseTo(890.25, 2);
+    expect(dot?.y).toBeCloseTo(302.5, 2);
+    expect(
+      arrowHitTest(
+        [{ id: 'arrow-dot', from: [0.98, 0], to: [0.981, 0.01] }],
+        identityTransform,
+        viewport,
+        dot?.x ?? 0,
+        dot?.y ?? 0,
+      ),
+    ).toBe('arrow-dot');
+  });
+
+  it('keeps far endpoints as an arrow when their projections are separated', () => {
+    expect(collapsedArrowDot([0.98, 0], [0.6, 0.7], identityTransform, viewport)).toBeNull();
   });
 });

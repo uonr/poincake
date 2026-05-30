@@ -1,6 +1,7 @@
 import { Hand, LocateFixed, Move, Pencil, Redo2, Spline, Undo2, ZoomIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ArrowSelection } from '../core/arrowSelection';
+import type { CoordinateTarget } from '../core/coordinateIndicator';
 import type { EditingSession } from '../core/editingSession';
 import { emptySelectionState, type SelectionState } from '../core/selectionState';
 import { seedNotes } from '../demo/seedNotes';
@@ -15,6 +16,7 @@ import type { HistoryState } from '../model/history';
 import type { NoteColor } from '../model/note';
 import type { NoteDraft } from '../model/noteDraft';
 import { ArrowInspector } from './ArrowInspector';
+import { CoordinateIndicator } from './CoordinateIndicator';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
 
 export const HyperbolicStage = () => {
@@ -25,6 +27,7 @@ export const HyperbolicStage = () => {
   const [mode, setMode] = useState<InteractionMode>('pan');
   const [editingSession, setEditingSession] = useState<EditingSession | null>(null);
   const [arrowSelection, setArrowSelection] = useState<ArrowSelection | null>(null);
+  const [coordinateTarget, setCoordinateTarget] = useState<CoordinateTarget | null>(null);
   const [, setSelection] = useState<SelectionState>(emptySelectionState);
   const [history, setHistory] = useState<HistoryState>({
     canUndo: false,
@@ -58,6 +61,7 @@ export const HyperbolicStage = () => {
       initialMode: 'pan',
       onEditingSessionChange: setEditingSession,
       onArrowSelectionChange: setArrowSelection,
+      onCoordinateTargetChange: setCoordinateTarget,
       onSelectionChange: setSelection,
       onZoomStateChange: setZoomState,
       onHistoryStateChange: setHistory,
@@ -116,6 +120,7 @@ export const HyperbolicStage = () => {
           onDelete={() => controllerRef.current?.deleteSelectedArrow()}
         />
       ) : null}
+      <CoordinateIndicator target={coordinateTarget} />
       <div className="top-left-controls">
         <div className="history-controls" data-testid="history-controls">
           <button

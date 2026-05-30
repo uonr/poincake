@@ -1,4 +1,5 @@
 import type { ArrowSelection } from '../core/arrowSelection';
+import type { CoordinateTarget } from '../core/coordinateIndicator';
 import type { EditingSession } from '../core/editingSession';
 import type { SelectionState } from '../core/selectionState';
 import { abs2 } from '../geometry/complex';
@@ -59,6 +60,7 @@ export type HyperbolicCanvasControllerOptions = Readonly<{
   onEditingSessionChange?: (session: EditingSession | null) => void;
   onSelectionChange?: (selection: SelectionState) => void;
   onArrowSelectionChange?: (selection: ArrowSelection | null) => void;
+  onCoordinateTargetChange?: (target: CoordinateTarget | null) => void;
   onZoomStateChange?: (state: ZoomState) => void;
   onHistoryStateChange?: (state: HistoryState) => void;
 }>;
@@ -96,6 +98,7 @@ export class HyperbolicCanvasController {
   private draftArrowTo: AnchoredPoint | null = null;
   private pendingArrowHitId: string | null = null;
   private selectedArrowId: string | null = null;
+  private hoveredArrowId: string | null = null;
   private flying = false;
   private rafId: number | null = null;
   private started = false;
@@ -132,6 +135,7 @@ export class HyperbolicCanvasController {
     this.bindResize();
     this.initZoom();
     this.emitSelection();
+    this.emitCoordinateTarget();
     this.emitHistoryState();
     this.requestRender();
   }
@@ -152,6 +156,7 @@ export class HyperbolicCanvasController {
     this.options.stage.classList.remove('dragging', 'item-drag', 'near-snap');
     this.options.onEditingSessionChange?.(null);
     this.options.onArrowSelectionChange?.(null);
+    this.options.onCoordinateTargetChange?.(null);
     this.emitSelection();
     this.started = false;
   }
@@ -388,6 +393,7 @@ export class HyperbolicCanvasController {
     this.listen(this.options.stage, 'pointercancel', () => this.endPointer());
     this.listen(this.options.stage, 'pointerleave', () => {
       this.options.stage.classList.remove('near-snap');
+      this.updateHoveredTarget(null);
     });
   }
 
@@ -432,6 +438,7 @@ export class HyperbolicCanvasController {
           '[data-testid="history-controls"]',
           '[data-testid="mode-controls"]',
           '[data-testid="zoom-controls"]',
+          '[data-testid="coordinate-indicator"]',
         ].join(', '),
       )
     ) {
@@ -480,7 +487,7 @@ export class HyperbolicCanvasController {
 
   private onPointerMove(event: PointerEvent): void {
     if (this.pointerMode === 'idle') {
-      this.updateHoveredNote(event.target);
+      this.updateHoveredTarget(event.target, event);
       if (this.interactionMode === 'edit' || this.interactionMode === 'arrow') {
         this.updateSnapCursor(event.clientX, event.clientY);
       }
@@ -642,6 +649,7 @@ export class HyperbolicCanvasController {
     }
 
     this.noteLayer.sync(this.world.notes);
+    this.emitCoordinateTarget();
   }
 
   private afterHistoryChange(): void {
@@ -656,6 +664,7 @@ export class HyperbolicCanvasController {
     // Arrow selection may have been invalidated by undo/redo; re-emit so the
     // inspector UI stays in sync.
     this.emitArrowSelection(this.viewport());
+    this.emitCoordinateTarget();
     this.emitHistoryState();
     this.requestRender();
   }
@@ -681,16 +690,31 @@ export class HyperbolicCanvasController {
       this.options.onArrowSelectionChange?.(null);
     }
     this.emitSelection();
+    this.emitCoordinateTarget();
   }
 
-  private updateHoveredNote(target: EventTarget | null): void {
+  private updateHoveredTarget(target: EventTarget | null, event?: PointerEvent): void {
     const nextHoveredNoteId = this.noteLayer.getNoteIdFromEventTarget(target);
-    if (nextHoveredNoteId === this.hoveredNoteId) {
+    const viewport = this.viewport();
+    const nextHoveredArrowId =
+      nextHoveredNoteId || !event
+        ? null
+        : arrowHitTest(
+            this.arrowGeometries(),
+            this.view,
+            viewport,
+            event.clientX - viewport.left,
+            event.clientY - viewport.top,
+          );
+
+    if (nextHoveredNoteId === this.hoveredNoteId && nextHoveredArrowId === this.hoveredArrowId) {
       return;
     }
 
     this.hoveredNoteId = nextHoveredNoteId;
+    this.hoveredArrowId = nextHoveredArrowId;
     this.emitSelection();
+    this.emitCoordinateTarget();
   }
 
   private emitSelection(): void {
@@ -708,6 +732,64 @@ export class HyperbolicCanvasController {
           }
         : null,
     });
+  }
+
+  private emitCoordinateTarget(): void {
+    if (!this.options.onCoordinateTargetChange) {
+      return;
+    }
+
+    const selectedNote = this.selectedNote();
+    if (selectedNote) {
+      this.options.onCoordinateTargetChange({
+        kind: 'note',
+        source: 'selected',
+        noteId: selectedNote.id,
+        anchor: selectedNote.anchor,
+      });
+      return;
+    }
+
+    const selectedArrow = this.selectedArrow();
+    if (selectedArrow) {
+      this.options.onCoordinateTargetChange({
+        kind: 'arrow',
+        source: 'selected',
+        arrowId: selectedArrow.id,
+        from: selectedArrow.from,
+        to: selectedArrow.to,
+      });
+      return;
+    }
+
+    const hoveredNote = this.hoveredNoteId
+      ? (this.world.notes.find((candidate) => candidate.id === this.hoveredNoteId) ?? null)
+      : null;
+    if (hoveredNote) {
+      this.options.onCoordinateTargetChange({
+        kind: 'note',
+        source: 'hovered',
+        noteId: hoveredNote.id,
+        anchor: hoveredNote.anchor,
+      });
+      return;
+    }
+
+    const hoveredArrow = this.hoveredArrowId
+      ? (this.world.arrows.find((candidate) => candidate.id === this.hoveredArrowId) ?? null)
+      : null;
+    if (hoveredArrow) {
+      this.options.onCoordinateTargetChange({
+        kind: 'arrow',
+        source: 'hovered',
+        arrowId: hoveredArrow.id,
+        from: hoveredArrow.from,
+        to: hoveredArrow.to,
+      });
+      return;
+    }
+
+    this.options.onCoordinateTargetChange(null);
   }
 
   private emitHistoryState(): void {
@@ -1017,6 +1099,7 @@ export class HyperbolicCanvasController {
       this.emitSelection();
     }
     this.emitArrowSelection(this.viewport());
+    this.emitCoordinateTarget();
     this.requestRender();
   }
 
@@ -1026,6 +1109,7 @@ export class HyperbolicCanvasController {
     }
     this.selectedArrowId = null;
     this.options.onArrowSelectionChange?.(null);
+    this.emitCoordinateTarget();
     this.requestRender();
   }
 
@@ -1036,6 +1120,7 @@ export class HyperbolicCanvasController {
     this.applyCommand({ type: 'delete-arrow', arrowId: this.selectedArrowId });
     this.selectedArrowId = null;
     this.options.onArrowSelectionChange?.(null);
+    this.emitCoordinateTarget();
     this.requestRender();
   }
 

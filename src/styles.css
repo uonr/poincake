@@ -642,3 +642,44 @@ body {
 .zoom-control button:active {
   transform: scale(0.98);
 }
+
+.coordinate-indicator {
+  align-items: center;
+  background: var(--surface-elevated);
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  bottom: 16px;
+  color: var(--text);
+  cursor: copy;
+  display: flex;
+  font: inherit;
+  font-size: 13px;
+  gap: 10px;
+  left: 16px;
+  line-height: 1.4;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 8px 12px;
+  position: absolute;
+  text-align: left;
+  z-index: 5;
+}
+
+.coordinate-indicator:hover {
+  background: var(--surface);
+}
+
+.coordinate-indicator-title {
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.coordinate-indicator code {
+  color: var(--text);
+  flex: 1 1 auto;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

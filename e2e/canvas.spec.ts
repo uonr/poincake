@@ -6,6 +6,7 @@ test('renders the hyperbolic canvas shell', async ({ page }) => {
   await expect(page.locator('#stage')).toBeVisible();
   await expect(page.getByTestId('note').first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible();
+  await expect(page.getByTestId('coordinate-indicator')).toBeHidden();
 });
 
 test('edits the active note through the React overlay', async ({ page }) => {
@@ -22,6 +23,25 @@ test('edits the active note through the React overlay', async ({ page }) => {
   const editedNote = page.getByTestId('note').filter({ hasText: 'Edited' });
   await expect(editedNote).toBeVisible();
   await expect(editedNote).toHaveCSS('white-space', 'pre-wrap');
+});
+
+test('copies the selected note coordinate from the indicator', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+
+  await page.getByTestId('note').and(page.locator('[data-note-render="text"]')).last().click();
+
+  const indicator = page.getByTestId('coordinate-indicator');
+  await expect(indicator).toBeEnabled();
+  await expect(indicator).toContainText('Selected note');
+  await expect(indicator.locator('code')).toContainText(';');
+
+  const shownCoordinate = await indicator.locator('code').textContent();
+  await indicator.click();
+
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(shownCoordinate);
 });
 
 test('creates a note from edit mode after distant panning', async ({ page }) => {

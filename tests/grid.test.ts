@@ -110,6 +110,7 @@ describe('hyperbolic tiling', () => {
       cy: 300,
       radius: 500,
       zoom: 1,
+      visualScale: 1,
     };
     const gridPoint = tiling.coarseGridPoints.find(
       (candidate) => abs2(applyTransform(view, candidate.point)) < 0.2 * 0.2,
@@ -141,6 +142,7 @@ describe('hyperbolic tiling', () => {
       cy: 300,
       radius: 500,
       zoom: 1,
+      visualScale: 1,
     };
     const original = tiling.coarseGridPoints.find(
       (candidate) => abs2(candidate.point) < 0.35 * 0.35,
@@ -249,6 +251,7 @@ describe('hyperbolic tiling', () => {
       cy: 300,
       radius: 500,
       zoom: 1,
+      visualScale: 1,
     };
 
     for (let i = 0; i < 10; i += 1) {
@@ -296,6 +299,7 @@ describe('hyperbolic tiling', () => {
       cy: 300,
       radius: 500,
       zoom: 1,
+      visualScale: 1,
     };
 
     for (let i = 0; i < 10; i += 1) {
@@ -354,6 +358,7 @@ describe('hyperbolic tiling', () => {
       cy: 300,
       radius: 500,
       zoom: 1.2,
+      visualScale: 1.2,
     };
 
     expect(coarsePoint).toBeDefined();

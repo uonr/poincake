@@ -5,9 +5,32 @@ import { generateHyperbolicTiling } from '../src/grid/hyperbolicTiling';
 import { ROOT_CHART_ID } from '../src/grid/tilingAddress';
 import type { Arrow } from '../src/model/arrow';
 import type { Note } from '../src/model/note';
-import { parseWorldFileText, stringifyWorldFile, WORLD_FILE_VERSION } from '../src/model/worldFile';
+import {
+  parseWorldFileText,
+  stringifyWorldFile,
+  WORLD_FILE_VERSION,
+  type WorldFileImageCodec,
+} from '../src/model/worldFile';
 import { HyperbolicWorldState } from '../src/model/worldState';
 import { anchorAt } from './support';
+
+// The real codec (AssetStore) needs IndexedDB; in node we just round-trip the
+// runtime assetId through the serialized data-URL slot so the format/runtime
+// boundary is exercised without touching storage.
+const fakeCodec: WorldFileImageCodec = {
+  encodeImage: async (content) => ({
+    kind: 'image',
+    src: `data:${content.mimeType};assetref,${content.assetId}`,
+    alt: content.alt,
+    mimeType: content.mimeType,
+  }),
+  decodeImage: async (content) => ({
+    kind: 'image',
+    assetId: content.src.split(',')[1] ?? '',
+    alt: content.alt,
+    mimeType: content.mimeType,
+  }),
+};
 
 const createWorld = () => {
   const tiling = generateHyperbolicTiling({ maxRadius: 0.75, maxTiles: 80 });
@@ -45,6 +68,21 @@ const createWorld = () => {
     createdAt: 2,
     updatedAt: 3,
   };
+  const imageNote: Note = {
+    id: 'note-image',
+    anchor: firstAnchor,
+    content: {
+      kind: 'image',
+      assetId: 'sha256-abc123',
+      alt: 'dropped.png',
+      mimeType: 'image/png',
+    },
+    appearance: {
+      color: 'c1',
+    },
+    createdAt: 3,
+    updatedAt: 4,
+  };
   const arrow: Arrow = {
     id: 'arrow-2',
     from: firstAnchor,
@@ -58,24 +96,33 @@ const createWorld = () => {
     updatedAt: 4,
   };
 
-  return new HyperbolicWorldState([note, coordinateNote], grid, [arrow]);
+  return new HyperbolicWorldState([note, coordinateNote, imageNote], grid, [arrow]);
 };
 
 describe('world file import/export', () => {
-  it('round-trips notes, arrows, charts, and the file version', () => {
-    const parsed = parseWorldFileText(stringifyWorldFile(createWorld()));
+  it('round-trips notes, arrows, charts, and the file version', async () => {
+    const parsed = await parseWorldFileText(
+      await stringifyWorldFile(createWorld(), fakeCodec),
+      fakeCodec,
+    );
 
-    expect(parsed.notes[0]?.content.text).toBe('Exported note');
+    expect(parsed.notes[0]?.content).toMatchObject({ kind: 'plain-text', text: 'Exported note' });
     expect(parsed.notes[1]?.content).toMatchObject({
       kind: 'coordinate-link',
       target: parsed.notes[0]?.anchor,
+    });
+    expect(parsed.notes[2]?.content).toMatchObject({
+      kind: 'image',
+      assetId: 'sha256-abc123',
+      alt: 'dropped.png',
+      mimeType: 'image/png',
     });
     expect(parsed.arrows[0]?.label).toBe('Link');
     expect(parsed.charts.map((chart) => chart.id)).toContain(ROOT_CHART_ID);
   });
 
-  it('parses walks into reduced addresses before they enter the model', () => {
-    const parsed = parseWorldFileText(
+  it('parses walks into reduced addresses before they enter the model', async () => {
+    const parsed = await parseWorldFileText(
       JSON.stringify({
         format: 'poincake-world',
         version: WORLD_FILE_VERSION,
@@ -99,17 +146,22 @@ describe('world file import/export', () => {
           charts: [{ id: ROOT_CHART_ID, parentId: null, transition: [] }],
         },
       }),
+      fakeCodec,
     );
 
     expect(parsed.notes[0]?.anchor.walk).toEqual([]);
   });
 
-  it('rejects unsupported versions and duplicate ids', () => {
-    const file = JSON.parse(stringifyWorldFile(createWorld()));
+  it('rejects unsupported versions and duplicate ids', async () => {
+    const file = JSON.parse(await stringifyWorldFile(createWorld(), fakeCodec));
 
-    expect(() => parseWorldFileText(JSON.stringify({ ...file, version: 999 }))).toThrow();
+    await expect(
+      parseWorldFileText(JSON.stringify({ ...file, version: 999 }), fakeCodec),
+    ).rejects.toThrow();
 
     file.content.notes.push({ ...file.content.notes[0] });
-    expect(() => parseWorldFileText(JSON.stringify(file))).toThrow(/Duplicate note id/);
+    await expect(parseWorldFileText(JSON.stringify(file), fakeCodec)).rejects.toThrow(
+      /Duplicate note id/,
+    );
   });
 });

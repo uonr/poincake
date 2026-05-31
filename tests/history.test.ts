@@ -65,11 +65,11 @@ describe('world history', () => {
     expect(history.state).toEqual({ canUndo: true, canRedo: false });
 
     expect(history.undo(world)).toBe(true);
-    expect(world.notes[0]?.content.text).toBe('Before');
+    expect(world.notes[0]?.content).toMatchObject({ kind: 'plain-text', text: 'Before' });
     expect(history.state).toEqual({ canUndo: false, canRedo: true });
 
     expect(history.redo(world)).toBe(true);
-    expect(world.notes[0]?.content.text).toBe('After');
+    expect(world.notes[0]?.content).toMatchObject({ kind: 'plain-text', text: 'After' });
     expect(history.state).toEqual({ canUndo: true, canRedo: false });
   });
 

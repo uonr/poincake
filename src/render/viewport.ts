@@ -9,6 +9,7 @@ export type Viewport = Readonly<{
   cy: number;
   radius: number;
   zoom: number;
+  visualScale: number;
 }>;
 
 export type ProjectedPoint = Readonly<{
@@ -55,6 +56,7 @@ export const createViewportFromRect = (rect: StageRect, zoom: number): Viewport 
     cy,
     radius: Math.sqrt(cx * cx + cy * cy) * zoom,
     zoom,
+    visualScale: zoom / fitDiskZoom(rect.width, rect.height),
   };
 };
 

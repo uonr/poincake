@@ -91,7 +91,7 @@ describe('world commands', () => {
       updatedAt: 2,
     });
 
-    expect(world.notes[0]?.content.text).toBe('After');
+    expect(world.notes[0]?.content).toMatchObject({ kind: 'plain-text', text: 'After' });
     expect(world.notes[0]?.appearance.color).toBe('c3');
     expect(world.notes[0]?.updatedAt).toBe(2);
     expect(result.patch).toEqual({
@@ -185,12 +185,12 @@ describe('world commands', () => {
     }
 
     applyWorldPatch(world, updateResult.patch, 'backward');
-    expect(world.notes[0]?.content.text).toBe('Before');
+    expect(world.notes[0]?.content).toMatchObject({ kind: 'plain-text', text: 'Before' });
     expect(world.notes[0]?.appearance.color).toBe('c1');
     expect(world.notes[0]?.updatedAt).toBe(1);
 
     applyWorldPatch(world, updateResult.patch, 'forward');
-    expect(world.notes[0]?.content.text).toBe('After');
+    expect(world.notes[0]?.content).toMatchObject({ kind: 'plain-text', text: 'After' });
     expect(world.notes[0]?.appearance.color).toBe('c4');
     expect(world.notes[0]?.updatedAt).toBe(4);
   });
@@ -242,6 +242,7 @@ describe('world commands', () => {
       cy: 300,
       radius: 500,
       zoom: 1,
+      visualScale: 1,
     };
 
     const result = applyWorldCommand(world, {

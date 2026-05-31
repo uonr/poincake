@@ -15,6 +15,7 @@ import {
 import type { AnchoredGrid } from '../grid/anchoredGrid';
 import { type GridAnchor, gridAnchorsEqual } from '../grid/tilingAddress';
 import type { Arrow, ArrowHeadMode } from '../model/arrow';
+import { AssetStore } from '../model/assetStore';
 import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
 import { type HistoryState, WorldHistory } from '../model/history';
 import {
@@ -24,6 +25,7 @@ import {
   noteColor,
   noteCoordinateTarget,
   noteDisplayText,
+  noteIsTextEditable,
 } from '../model/note';
 import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
 import { parseExternalLink } from '../model/noteLink';
@@ -55,7 +57,7 @@ type PointerMode =
 type GestureButton = 'primary' | 'middle';
 
 const ARROW_DEFAULT_COLOR: NoteColor = 'c1';
-const MAX_ZOOM = 2.5;
+const MAX_ZOOM = 6;
 const WHEEL_ZOOM_STEP = 600;
 
 type AnchoredPoint = Readonly<{
@@ -67,6 +69,7 @@ type FlyToOptions = Readonly<{
   ms?: number;
   onDone?: () => void;
   recordNavigation?: boolean;
+  zoom?: number;
 }>;
 
 export type HyperbolicCanvasControllerOptions = Readonly<{
@@ -113,6 +116,7 @@ export class HyperbolicCanvasController {
   private readonly gridRenderer: GridRenderer;
   private readonly noteLayer: NoteLayer;
   private readonly arrowLayer: ArrowLayer;
+  private readonly assets = new AssetStore();
   private readonly world: HyperbolicWorldState;
   private readonly history = new WorldHistory();
   private interactionMode: InteractionMode;
@@ -174,7 +178,8 @@ export class HyperbolicCanvasController {
 
     this.started = true;
     this.refreshViewMetrics();
-    this.noteLayer.sync(this.world.notes);
+    this.syncNotes();
+    this.hydrateImageAssets();
     this.bindPointerEvents();
     this.bindResize();
     this.initZoom();
@@ -198,6 +203,7 @@ export class HyperbolicCanvasController {
     this.noteLayer.dispose();
     this.arrowLayer.dispose();
     this.gridRenderer.dispose();
+    this.assets.dispose();
     this.options.stage.classList.remove('dragging', 'item-drag', 'near-snap');
     this.options.onEditingSessionChange?.(null);
     this.options.onArrowSelectionChange?.(null);
@@ -397,12 +403,12 @@ export class HyperbolicCanvasController {
     this.flyTo(target);
   }
 
-  exportWorldFileText(): string {
-    return stringifyWorldFile(this.world);
+  exportWorldFileText(): Promise<string> {
+    return stringifyWorldFile(this.world, this.assets);
   }
 
-  importWorldFileText(text: string): void {
-    const content = parseWorldFileText(text);
+  async importWorldFileText(text: string): Promise<void> {
+    const content = await parseWorldFileText(text, this.assets);
 
     if (this.editingNoteId) {
       this.cancelEditing();
@@ -439,7 +445,7 @@ export class HyperbolicCanvasController {
     this.nextNoteId = nextNumericId(content.notes, 'note');
     this.nextArrowId = nextNumericId(content.arrows, 'arrow');
 
-    this.noteLayer.sync(this.world.notes);
+    this.syncNotes();
     this.options.onEditingSessionChange?.(null);
     this.options.onArrowSelectionChange?.(null);
     this.emitSelection();
@@ -522,6 +528,9 @@ export class HyperbolicCanvasController {
       this.onPointerMove(event),
     );
     this.listen<WheelEvent>(this.options.stage, 'wheel', (event) => this.onWheel(event));
+    this.listen<DragEvent>(this.options.stage, 'dragover', (event) => this.onDragOver(event));
+    this.listen<DragEvent>(this.options.stage, 'drop', (event) => this.onDrop(event));
+    this.listen<MouseEvent>(this.options.stage, 'dblclick', (event) => this.onDoubleClick(event));
     this.listen<PointerEvent>(this.options.stage, 'pointerup', (event) => this.endPointer(event));
     this.listen(this.options.stage, 'pointercancel', () => this.endPointer());
     this.listen(this.options.stage, 'pointerleave', () => {
@@ -632,6 +641,111 @@ export class HyperbolicCanvasController {
     event.preventDefault();
     const nextZoom = this.zoom * 2 ** (-event.deltaY / WHEEL_ZOOM_STEP);
     this.setZoom(nextZoom);
+  }
+
+  private onDragOver(event: DragEvent): void {
+    const target = event.target instanceof Element ? event.target : null;
+    if (isCanvasControlTarget(target) || !event.dataTransfer) {
+      return;
+    }
+    if (!hasImageDropItem(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  private onDrop(event: DragEvent): void {
+    const target = event.target instanceof Element ? event.target : null;
+    if (isCanvasControlTarget(target) || !event.dataTransfer) {
+      return;
+    }
+
+    const image = firstImageFile(event.dataTransfer.files);
+    if (!image) {
+      return;
+    }
+
+    event.preventDefault();
+    void this.createImageNoteFromDrop(image, event.clientX, event.clientY);
+  }
+
+  private async createImageNoteFromDrop(
+    file: File,
+    clientX: number,
+    clientY: number,
+  ): Promise<void> {
+    this.refreshViewMetrics();
+    const snapped = this.world.grid.snapScreenPoint(clientX, clientY, this.view, this.viewport());
+    if (!snapped) {
+      return;
+    }
+
+    // Store the bytes in IndexedDB and keep only the content-hash id on the note.
+    const assetId = await this.assets.put(file);
+    const now = Date.now();
+    const note: Note = {
+      id: `note-${this.nextNoteId++}`,
+      anchor: snapped.anchor,
+      content: {
+        kind: 'image',
+        assetId,
+        alt: file.name,
+        mimeType: file.type,
+      },
+      appearance: {
+        color: 'c1',
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.applyCommand({ type: 'create-note', note });
+    this.selectNote(note.id);
+    this.requestRender();
+  }
+
+  private onDoubleClick(event: MouseEvent): void {
+    // The pointerdown gesture captures the pointer on the stage, so the synthesized
+    // dblclick retargets to the stage rather than the note. Hit-test by coordinates.
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    const noteId =
+      this.noteLayer.getNoteIdFromEventTarget(hit) ??
+      this.noteLayer.getNoteIdFromEventTarget(event.target);
+    if (!noteId) {
+      return;
+    }
+
+    const note = this.world.notes.find((candidate) => candidate.id === noteId);
+    if (!note || note.content.kind !== 'image') {
+      return;
+    }
+
+    // Center the image and zoom so it renders at its intrinsic pixel size (1:1).
+    event.preventDefault();
+    this.refreshViewMetrics();
+    this.selectNote(note.id);
+    this.flyTo(this.notePoint(note), {
+      zoom: this.imageActualSizeZoom(note.id),
+      recordNavigation: true,
+    });
+  }
+
+  // The zoom at which the centered image renders 1:1 with its source pixels.
+  // At the disk center the render scale equals visualScale (= zoom / fitDiskZoom),
+  // so scaling the fit zoom by intrinsic/layout width lands the image at 100%.
+  private imageActualSizeZoom(noteId: string): number {
+    const fitZoom = this.fitZoom();
+    const image = this.noteLayer.getElement(noteId)?.firstElementChild;
+    if (
+      !(image instanceof HTMLImageElement) ||
+      image.naturalWidth === 0 ||
+      image.clientWidth === 0
+    ) {
+      return fitZoom;
+    }
+
+    return fitZoom * (image.naturalWidth / image.clientWidth);
   }
 
   private onPointerMove(event: PointerEvent): void {
@@ -802,14 +916,14 @@ export class HyperbolicCanvasController {
     }
 
     this.invalidateWorldPointCache();
-    this.noteLayer.sync(this.world.notes);
+    this.syncNotes();
     this.emitCoordinateTarget();
     this.emitCoordinateNotePreview();
   }
 
   private afterHistoryChange(): void {
     this.invalidateWorldPointCache();
-    this.noteLayer.sync(this.world.notes);
+    this.syncNotes();
     if (this.selectedNoteId && !this.selectedNote()) {
       this.selectedNoteId = null;
     }
@@ -1184,6 +1298,9 @@ export class HyperbolicCanvasController {
   }
 
   private startEdit(note: Note): void {
+    if (!noteIsTextEditable(note)) {
+      return;
+    }
     if (this.pendingNoteId && this.pendingNoteId !== note.id) {
       this.discardPendingNote();
     }
@@ -1510,6 +1627,9 @@ export class HyperbolicCanvasController {
     const ms = options.ms ?? 450;
     const startView = this.view;
     const startPosition = applyTransform(startView, target);
+    const startZoom = this.zoom;
+    const targetZoom = options.zoom === undefined ? this.zoom : this.clampZoom(options.zoom);
+    const animateZoom = Math.abs(targetZoom - startZoom) > 1e-6;
     const startTime = performance.now();
     if (options.recordNavigation) {
       this.recordNavigationJump(target);
@@ -1527,12 +1647,20 @@ export class HyperbolicCanvasController {
           startPosition[1] * (1 - eased),
         ];
         this.view = transformFromPointPair(target, position);
+        if (animateZoom) {
+          this.zoom = startZoom + (targetZoom - startZoom) * eased;
+          this.emitZoomState();
+        }
         this.render();
 
         if (t < 1) {
           requestAnimationFrame(step);
         } else {
           this.flying = false;
+          if (animateZoom) {
+            this.zoom = targetZoom;
+            this.emitZoomState();
+          }
           this.reanchorIfNeeded();
           this.render();
           options.onDone?.();
@@ -1652,6 +1780,26 @@ export class HyperbolicCanvasController {
     }
   }
 
+  private syncNotes(): void {
+    this.noteLayer.sync(this.world.notes, (assetId) => this.assets.objectUrl(assetId));
+  }
+
+  // Image bytes live in IndexedDB; load object URLs for the notes already in the
+  // world (e.g. after import) and re-sync so their <img> src can resolve.
+  private hydrateImageAssets(): void {
+    const assetIds = this.world.notes
+      .map((note) => (note.content.kind === 'image' ? note.content.assetId : null))
+      .filter((id): id is string => id !== null);
+    if (assetIds.length === 0) {
+      return;
+    }
+
+    void this.assets.hydrate(assetIds).then(() => {
+      this.syncNotes();
+      this.requestRender();
+    });
+  }
+
   private requestRender(): void {
     if (this.rafId !== null) {
       return;
@@ -1723,4 +1871,28 @@ const parseGestureButton = (event: PointerEvent): GestureButton | null => {
     return 'middle';
   }
   return null;
+};
+
+const firstImageFile = (files: FileList): File | null => {
+  for (const file of files) {
+    if (file.type.startsWith('image/')) {
+      return file;
+    }
+  }
+
+  return null;
+};
+
+const hasImageDropItem = (dataTransfer: DataTransfer): boolean => {
+  if (firstImageFile(dataTransfer.files)) {
+    return true;
+  }
+
+  for (const item of dataTransfer.items) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      return true;
+    }
+  }
+
+  return false;
 };

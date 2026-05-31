@@ -183,8 +183,8 @@ export const HyperbolicStage = () => {
     controllerRef.current?.commitSelectedArrowLabel(label);
   };
 
-  const exportContent = (): void => {
-    const text = controllerRef.current?.exportWorldFileText();
+  const exportContent = async (): Promise<void> => {
+    const text = await controllerRef.current?.exportWorldFileText();
     if (!text) {
       return;
     }
@@ -198,9 +198,9 @@ export const HyperbolicStage = () => {
     URL.revokeObjectURL(url);
   };
 
-  const importContent = (text: string): void => {
+  const importContent = async (text: string): Promise<void> => {
     try {
-      controllerRef.current?.importWorldFileText(text);
+      await controllerRef.current?.importWorldFileText(text);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Import failed.');
     }
@@ -322,7 +322,7 @@ export const HyperbolicStage = () => {
           type="range"
           id="zoom"
           min={zoomState.minZoom}
-          max="2.5"
+          max="6"
           step="0.05"
           value={zoomState.zoom}
           onChange={(event) => changeZoom(Number.parseFloat(event.currentTarget.value))}

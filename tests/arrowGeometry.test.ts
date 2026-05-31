@@ -18,6 +18,7 @@ const viewport: Viewport = {
   cy: 300,
   radius: 500,
   zoom: 1,
+  visualScale: 1,
 };
 
 const arrow: ArrowGeometry = {

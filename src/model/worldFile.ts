@@ -7,13 +7,50 @@ import {
   reduceWalk,
 } from '../grid/tilingAddress';
 import type { Arrow } from './arrow';
-import type { Note } from './note';
+import type {
+  CoordinateLinkNoteContent,
+  ImageNoteContent,
+  Note,
+  NoteContent,
+  PlainTextNoteContent,
+} from './note';
 import type { HyperbolicWorldState } from './worldState';
 
 export const WORLD_FILE_VERSION = 1;
 
+// The on-disk world file inlines image bytes as a data URL, so a shared file
+// stays self-contained. At runtime the same note instead carries an `assetId`
+// into the AssetStore (see note.ts / assetStore.ts); the codec below bridges
+// the two whenever a file is written or read.
+export type FileImageNoteContent = Readonly<{
+  kind: 'image';
+  src: string;
+  alt: string;
+  mimeType: string;
+}>;
+
+export type FileNoteContent =
+  | PlainTextNoteContent
+  | CoordinateLinkNoteContent
+  | FileImageNoteContent;
+
+export type FileNote = Omit<Note, 'content'> & { content: FileNoteContent };
+
+export type WorldFileImageCodec = Readonly<{
+  encodeImage: (content: ImageNoteContent) => Promise<FileImageNoteContent>;
+  decodeImage: (content: FileImageNoteContent) => Promise<ImageNoteContent>;
+}>;
+
+// Runtime content handed back to the app: image notes carry an assetId.
 export type WorldFileContent = Readonly<{
   notes: Note[];
+  arrows: Arrow[];
+  charts: GridChartSnapshot[];
+}>;
+
+// Serialized content as it lives in the file: image notes carry a data URL.
+export type FileWorldFileContent = Readonly<{
+  notes: FileNote[];
   arrows: Arrow[];
   charts: GridChartSnapshot[];
 }>;
@@ -22,7 +59,7 @@ export type WorldFile = Readonly<{
   format: 'poincake-world';
   version: typeof WORLD_FILE_VERSION;
   exportedAt: string;
-  content: WorldFileContent;
+  content: FileWorldFileContent;
 }>;
 
 const noteColorSchema = z.enum(['c1', 'c2', 'c3', 'c4']);
@@ -80,6 +117,14 @@ const noteContentSchema = z.discriminatedUnion('kind', [
       kind: z.literal('coordinate-link'),
       text: z.string(),
       target: gridAnchorSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('image'),
+      src: z.string().min(1),
+      alt: z.string(),
+      mimeType: z.string().min(1),
     })
     .strict(),
 ]);
@@ -188,21 +233,29 @@ export const worldFileSchema = z
   })
   .strict();
 
-export const createWorldFile = (world: HyperbolicWorldState): WorldFile => ({
+export const createWorldFile = async (
+  world: HyperbolicWorldState,
+  codec: WorldFileImageCodec,
+): Promise<WorldFile> => ({
   format: 'poincake-world',
   version: WORLD_FILE_VERSION,
   exportedAt: new Date().toISOString(),
   content: {
-    notes: world.notes.map(cloneNote),
+    notes: await Promise.all(world.notes.map((note) => encodeNoteForFile(note, codec))),
     arrows: world.arrows.map(cloneArrow),
     charts: world.grid.chartSnapshots().map(cloneChartSnapshot),
   },
 });
 
-export const stringifyWorldFile = (world: HyperbolicWorldState): string =>
-  `${JSON.stringify(createWorldFile(world), null, 2)}\n`;
+export const stringifyWorldFile = async (
+  world: HyperbolicWorldState,
+  codec: WorldFileImageCodec,
+): Promise<string> => `${JSON.stringify(await createWorldFile(world, codec), null, 2)}\n`;
 
-export const parseWorldFileText = (text: string): WorldFileContent => {
+export const parseWorldFileText = async (
+  text: string,
+  codec: WorldFileImageCodec,
+): Promise<WorldFileContent> => {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -215,7 +268,12 @@ export const parseWorldFileText = (text: string): WorldFileContent => {
     throw new Error(z.prettifyError(parsed.error));
   }
 
-  return cloneContent(parsed.data.content);
+  const content = parsed.data.content;
+  return {
+    notes: await Promise.all(content.notes.map((note) => decodeNoteFromFile(note, codec))),
+    arrows: content.arrows.map(cloneArrow),
+    charts: content.charts.map(cloneChartSnapshot),
+  };
 };
 
 const rejectDuplicateIds = (
@@ -252,25 +310,43 @@ const rejectMissingChart = (
   });
 };
 
-const cloneContent = (content: WorldFileContent): WorldFileContent => ({
-  notes: content.notes.map(cloneNote),
-  arrows: content.arrows.map(cloneArrow),
-  charts: content.charts.map(cloneChartSnapshot),
-});
-
-const cloneNote = (note: Note): Note => ({
+const encodeNoteForFile = async (note: Note, codec: WorldFileImageCodec): Promise<FileNote> => ({
   ...note,
   anchor: cloneAnchorForFile(note.anchor),
-  content: cloneNoteContentForFile(note.content),
+  content: await encodeContentForFile(note.content, codec),
   appearance: { ...note.appearance },
 });
 
-const cloneNoteContentForFile = (content: Note['content']): Note['content'] => {
+const encodeContentForFile = (
+  content: NoteContent,
+  codec: WorldFileImageCodec,
+): Promise<FileNoteContent> | FileNoteContent => {
+  if (content.kind === 'image') {
+    return codec.encodeImage(content);
+  }
   if (content.kind === 'coordinate-link') {
-    return {
-      ...content,
-      target: cloneAnchorForFile(content.target),
-    };
+    return { ...content, target: cloneAnchorForFile(content.target) };
+  }
+
+  return { ...content };
+};
+
+const decodeNoteFromFile = async (note: FileNote, codec: WorldFileImageCodec): Promise<Note> => ({
+  ...note,
+  anchor: cloneAnchorForFile(note.anchor),
+  content: await decodeContentFromFile(note.content, codec),
+  appearance: { ...note.appearance },
+});
+
+const decodeContentFromFile = (
+  content: FileNoteContent,
+  codec: WorldFileImageCodec,
+): Promise<NoteContent> | NoteContent => {
+  if (content.kind === 'image') {
+    return codec.decodeImage(content);
+  }
+  if (content.kind === 'coordinate-link') {
+    return { ...content, target: cloneAnchorForFile(content.target) };
   }
 
   return { ...content };

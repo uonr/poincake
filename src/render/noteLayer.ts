@@ -15,6 +15,10 @@ export type RenderedNote = Readonly<{
   point: DiskPoint;
 }>;
 
+// Resolves an image note's assetId to a usable object URL, or null while the
+// asset is still loading from storage.
+export type AssetUrlResolver = (assetId: string) => string | null;
+
 export class NoteLayer {
   private readonly elements = new Map<string, HTMLDivElement>();
 
@@ -28,7 +32,7 @@ export class NoteLayer {
     this.elements.clear();
   }
 
-  sync(notes: readonly Note[]): void {
+  sync(notes: readonly Note[], resolveAssetUrl: AssetUrlResolver): void {
     const liveIds = new Set(notes.map((note) => note.id));
 
     for (const [id, element] of this.elements) {
@@ -56,7 +60,7 @@ export class NoteLayer {
       }
 
       if (!element.classList.contains('editing')) {
-        renderNoteContent(element, note.content);
+        renderNoteContent(element, note.content, resolveAssetUrl);
       }
     }
   }
@@ -82,7 +86,8 @@ export class NoteLayer {
       element.dataset.noteSelected = note.id === selectedNoteId ? 'true' : 'false';
       const transformed = applyTransform(view, point);
       const radius2 = abs2(transformed);
-      const scale = 1 - radius2;
+      const hyperbolicScale = 1 - radius2;
+      const scale = hyperbolicScale * viewport.visualScale;
       const projected = projectDiskPoint(clampForProjection(transformed), viewport);
       const inRect =
         projected.x >= 0 &&
@@ -95,7 +100,7 @@ export class NoteLayer {
           element.classList.remove('as-dot', 'as-pill-h', 'as-pill-v');
           element.dataset.noteRender = 'text';
           element.style.transform = `translate(${projected.x}px, ${projected.y}px) translate(-50%, -50%) scale(${scale})`;
-          element.style.opacity = String(Math.min(1, scale * 3));
+          element.style.opacity = String(Math.min(1, hyperbolicScale * 3));
         } else {
           const dotCell = mergedDotCell(projected.x, projected.y);
           if (occupiedDotCells.has(dotCell)) {
@@ -186,7 +191,45 @@ const clampForProjection = (point: DiskPoint): DiskPoint => {
 const mergedDotCell = (x: number, y: number): string =>
   `${Math.round(x / DOT_MERGE_CELL)},${Math.round(y / DOT_MERGE_CELL)}`;
 
-const renderNoteContent = (element: HTMLDivElement, content: NoteContent): void => {
+const renderNoteContent = (
+  element: HTMLDivElement,
+  content: NoteContent,
+  resolveAssetUrl: AssetUrlResolver,
+): void => {
+  if (content.kind === 'image') {
+    element.dataset.noteContentKind = 'image';
+    element.title = content.alt;
+    // null while the asset is still loading; a later sync fills in the src.
+    const url = resolveAssetUrl(content.assetId);
+    if (element.firstElementChild instanceof HTMLImageElement) {
+      if (url && element.firstElementChild.src !== url) {
+        element.firstElementChild.src = url;
+      }
+      element.firstElementChild.alt = content.alt;
+      return;
+    }
+
+    element.textContent = '';
+    const image = document.createElement('img');
+    image.className = 'note-image';
+    image.alt = content.alt;
+    const applyAverageColor = (): void => {
+      const color = averageImageColor(image);
+      if (color) {
+        element.style.setProperty('--dot-color', color);
+      }
+    };
+    image.addEventListener('load', applyAverageColor);
+    if (url) {
+      image.src = url;
+      if (image.complete) {
+        applyAverageColor();
+      }
+    }
+    element.appendChild(image);
+    return;
+  }
+
   const text = content.text;
   const isCoordinate = content.kind === 'coordinate-link';
   element.dataset.noteContentKind = isCoordinate ? 'coordinate' : 'text';
@@ -204,6 +247,29 @@ const renderNoteContent = (element: HTMLDivElement, content: NoteContent): void 
 
   if (element.textContent !== text) {
     element.textContent = text;
+  }
+};
+
+const averageImageColor = (image: HTMLImageElement): string | null => {
+  if (image.naturalWidth === 0 || image.naturalHeight === 0) {
+    return null;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    return null;
+  }
+
+  try {
+    // Downscaling to a single pixel lets the browser average the image for us.
+    context.drawImage(image, 0, 0, 1, 1);
+    const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+    return `rgb(${r}, ${g}, ${b})`;
+  } catch {
+    return null;
   }
 };
 

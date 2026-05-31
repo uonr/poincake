@@ -237,6 +237,27 @@ body {
   width: 24px;
 }
 
+.item[data-note-content-kind="image"]:not(.as-dot):not(.as-pill-h):not(.as-pill-v) {
+  background: var(--surface-elevated);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  line-height: 0;
+}
+
+.item[data-note-content-kind="image"]:not(.as-dot):not(.as-pill-h):not(.as-pill-v)::after {
+  border-radius: 10px;
+  inset: -3px;
+}
+
+.note-image {
+  border-radius: 8px;
+  display: block;
+  max-height: 180px;
+  max-width: 240px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
 .coordinate-note-preview {
   background: var(--surface-elevated);
   border: 1px solid var(--border);
@@ -281,6 +302,18 @@ body {
   outline: none !important;
   padding: 0 !important;
   width: 6px;
+}
+
+.item.as-dot .note-image,
+.item.as-pill-h .note-image,
+.item.as-pill-v .note-image {
+  display: none;
+}
+
+.item[data-note-content-kind="image"].as-dot,
+.item[data-note-content-kind="image"].as-pill-h,
+.item[data-note-content-kind="image"].as-pill-v {
+  background: var(--dot-color, currentColor);
 }
 
 .item.as-pill-h,

@@ -42,12 +42,24 @@ import { Tooltip } from './Tooltip';
 import { loadPersistedWorld, savePersistedWorld } from './worldStorage';
 
 // The app starts blank and persists the working document to localStorage. Flip
-// this on to instead populate a fresh canvas with the demo notes—useful for
-// screenshots and perf testing, but it has no bearing on a restored document.
+// this on (or load with `?demo`) to instead populate a fresh canvas with the
+// demo notes—useful for screenshots, perf testing, and e2e specs—but it only
+// applies when there's nothing persisted to restore.
 const SEED_DEMO_NOTES = false;
 
 // Coalesce the burst of change events from a drag/typing into one write.
 const SAVE_DEBOUNCE_MS = 600;
+
+const shouldSeedDemoNotes = (): boolean => {
+  if (SEED_DEMO_NOTES) {
+    return true;
+  }
+  try {
+    return new URLSearchParams(window.location.search).has('demo');
+  } catch {
+    return false;
+  }
+};
 
 export const HyperbolicStage = () => {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -89,7 +101,7 @@ export const HyperbolicStage = () => {
 
     const tiling = generateHyperbolicTiling();
     const grid = new AnchoredGrid(tiling);
-    const notes = SEED_DEMO_NOTES
+    const notes = shouldSeedDemoNotes()
       ? seedNotes(tiling.coarseGridPoints, 700, { maxInitialRadius: 0.92 })
       : [];
 

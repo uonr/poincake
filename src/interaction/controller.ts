@@ -160,6 +160,10 @@ export class HyperbolicCanvasController {
   private flying = false;
   private rafId: number | null = null;
   private started = false;
+  // Once disposed the instance is inert: async work that resolves later (image
+  // hydration, world import) must not touch the DOM, or—under StrictMode's
+  // mount/unmount/mount—an orphaned note element leaks onto the shared stage.
+  private disposed = false;
   // Cached layout/style; see refreshViewMetrics.
   private stageRect: StageRect | null = null;
   private gridColor = '#888';
@@ -203,6 +207,7 @@ export class HyperbolicCanvasController {
   }
 
   dispose(): void {
+    this.disposed = true;
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -431,6 +436,13 @@ export class HyperbolicCanvasController {
 
   async importWorldFileText(text: string): Promise<void> {
     const content = await parseWorldFileText(text, this.assets);
+    // The parse above is async, so the controller may have been disposed while it
+    // was in flight. NoteLayer's container isolation already keeps a late import
+    // from leaking note DOM, but bailing here also avoids the stale React setState
+    // callbacks (emitSelection etc.) and wasted work a disposed controller would do.
+    if (this.disposed) {
+      return;
+    }
 
     if (this.editingNoteId) {
       this.cancelEditing();
@@ -1863,13 +1875,16 @@ export class HyperbolicCanvasController {
     }
 
     void this.assets.hydrate(assetIds).then(() => {
+      if (this.disposed) {
+        return;
+      }
       this.syncNotes();
       this.requestRender();
     });
   }
 
   private requestRender(): void {
-    if (this.rafId !== null) {
+    if (this.disposed || this.rafId !== null) {
       return;
     }
 

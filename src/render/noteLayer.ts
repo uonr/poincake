@@ -21,14 +21,21 @@ export type AssetUrlResolver = (assetId: string) => string | null;
 
 export class NoteLayer {
   private readonly elements = new Map<string, HTMLDivElement>();
+  private readonly container: HTMLDivElement;
 
-  constructor(private readonly stage: HTMLElement) {}
+  constructor(stage: HTMLElement) {
+    // Own a dedicated layer element rather than appending notes straight onto the
+    // shared #stage. dispose() removes it as a single unit, so a note appended by
+    // a late async callback (e.g. an import that resolves after a StrictMode
+    // unmount) lands in a detached subtree instead of polluting a stage that
+    // another controller instance may now own.
+    this.container = document.createElement('div');
+    this.container.className = 'note-layer';
+    stage.appendChild(this.container);
+  }
 
   dispose(): void {
-    for (const element of this.elements.values()) {
-      element.remove();
-    }
-
+    this.container.remove();
     this.elements.clear();
   }
 
@@ -49,7 +56,7 @@ export class NoteLayer {
         element.className = `item ${noteColor(note)}`;
         element.dataset.noteId = note.id;
         element.dataset.testid = 'note';
-        this.stage.appendChild(element);
+        this.container.appendChild(element);
         this.elements.set(note.id, element);
       }
 

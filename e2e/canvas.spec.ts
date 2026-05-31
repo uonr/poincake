@@ -1,7 +1,60 @@
 import { expect, test } from '@playwright/test';
 
-test('renders the hyperbolic canvas shell', async ({ page }) => {
+// A minimal serialized world (one note) in the same format export/import and the
+// localStorage autosave use. Inlined so the spec needs no Node fs/url types,
+// which the build's tsc does not include for e2e.
+const PERSISTED_WORLD = JSON.stringify({
+  format: 'poincake-world',
+  version: 1,
+  exportedAt: '2026-05-31T04:19:10.614Z',
+  content: {
+    notes: [
+      {
+        id: 'note-0',
+        anchor: {
+          chartId: 'root',
+          walk: [],
+          local: { kind: 'edge', index: 1, subdivision: 4, subdivisions: 6 },
+        },
+        content: { kind: 'plain-text', text: '你好，世界' },
+        appearance: { color: 'c1' },
+        createdAt: 1780201074140,
+        updatedAt: 1780201081732,
+      },
+    ],
+    arrows: [],
+    charts: [
+      { id: 'root', parentId: null, transition: [] },
+      { id: 'chart-1', parentId: 'root', transition: [0, 2, 1, 0] },
+      { id: 'chart-2', parentId: 'chart-1', transition: [0, 1, 2, 0] },
+    ],
+  },
+});
+
+test('restores a persisted document without leaving a screen-fixed duplicate', async ({ page }) => {
+  // Pre-seed the autosave slot so the app boots through the restore path rather
+  // than starting blank.
+  await page.addInitScript((world) => {
+    window.localStorage.setItem('poincake:world', world);
+  }, PERSISTED_WORLD);
   await page.goto('/');
+
+  const helloNotes = page.getByTestId('note').filter({ hasText: '你好，世界' });
+  await expect(helloNotes.first()).toBeVisible();
+
+  // A navigate-mode drag from blank space pans the disk. The live note follows
+  // the pan; a leaked, screen-fixed clone would stay put and inflate the count.
+  const blank = await findBlankStagePoint(page);
+  await page.mouse.move(blank.x, blank.y);
+  await page.mouse.down();
+  await page.mouse.move(blank.x + 140, blank.y + 90, { steps: 10 });
+  await page.mouse.up();
+
+  await expect(helloNotes).toHaveCount(1);
+});
+
+test('renders the hyperbolic canvas shell', async ({ page }) => {
+  await page.goto('/?demo');
 
   await expect(page.locator('#stage')).toBeVisible();
   await expect(page.getByTestId('note').first()).toBeVisible();
@@ -23,7 +76,7 @@ test('zooms with the wheel over blank canvas space', async ({ page }) => {
 });
 
 test('pans with the middle mouse button in non-navigation modes', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?demo');
 
   for (const mode of ['Text', 'Move', 'Arrow']) {
     await page.getByRole('button', { name: mode }).click();
@@ -102,7 +155,7 @@ test('switches modes with keyboard shortcuts', async ({ page }) => {
 });
 
 test('edits the active note through the React overlay', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?demo');
 
   await page.getByRole('button', { name: 'Text' }).click();
   await page.getByTestId('note').and(page.locator('[data-note-render="text"]')).last().click();
@@ -118,7 +171,7 @@ test('edits the active note through the React overlay', async ({ page }) => {
 
 test('copies the selected note coordinate from the indicator', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.goto('/');
+  await page.goto('/?demo');
 
   await page.getByTestId('note').and(page.locator('[data-note-render="text"]')).last().click();
 
@@ -136,7 +189,7 @@ test('copies the selected note coordinate from the indicator', async ({ page, co
 });
 
 test('previews the target note when hovering a coordinate note', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?demo');
 
   const textNotes = page.getByTestId('note').and(page.locator('[data-note-render="text"]'));
   const targetNote = textNotes.first();

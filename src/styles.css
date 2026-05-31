@@ -131,6 +131,17 @@ body {
   z-index: 2;
 }
 
+/* NoteLayer owns this overlay so it can be torn down as a unit. It spans the
+   whole stage, so it must stay transparent to pointer events meant for the
+   canvas beneath; only the notes inside opt back in (see .item). It stays a
+   z-index:auto positioned box so the notes' own z-index still resolves against
+   the canvases rather than being trapped here. */
+.note-layer {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
 #stage.mode-pan,
 #stage.mode-edit,
 #stage.mode-move {
@@ -184,6 +195,9 @@ body {
   font-size: 16px;
   font-weight: 500;
   left: 0;
+  /* The note-layer overlay is pointer-events:none; notes re-enable so they stay
+     hoverable/clickable while blank areas fall through to the canvas. */
+  pointer-events: auto;
   position: absolute;
   top: 0;
   transform-origin: center center;

@@ -158,6 +158,10 @@ export class HyperbolicCanvasController {
   private readonly navigationBackStack: DiskPoint[] = [];
   private readonly navigationForwardStack: DiskPoint[] = [];
   private flying = false;
+  private flyRafId: number | null = null;
+  // Snaps the in-flight fly to its destination; set while a fly is running so it
+  // can be settled (rather than dropped) when another navigation interrupts it.
+  private flySettle: (() => void) | null = null;
   private rafId: number | null = null;
   private started = false;
   // Once disposed the instance is inert: async work that resolves later (image
@@ -212,6 +216,7 @@ export class HyperbolicCanvasController {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    this.cancelFly(false);
 
     while (this.disposers.length > 0) {
       this.disposers.pop()?.();
@@ -401,10 +406,9 @@ export class HyperbolicCanvasController {
   }
 
   goBack(): void {
-    if (this.flying) {
-      return;
-    }
-
+    // Settle any in-flight fly first so the recorded forward entry is the real
+    // prior location rather than a mid-animation point.
+    this.cancelFly(true);
     const target = this.navigationBackStack.pop();
     if (!target) {
       return;
@@ -416,10 +420,7 @@ export class HyperbolicCanvasController {
   }
 
   goForward(): void {
-    if (this.flying) {
-      return;
-    }
-
+    this.cancelFly(true);
     const target = this.navigationForwardStack.pop();
     if (!target) {
       return;
@@ -436,10 +437,8 @@ export class HyperbolicCanvasController {
 
   async importWorldFileText(text: string): Promise<void> {
     const content = await parseWorldFileText(text, this.assets);
-    // The parse above is async, so the controller may have been disposed while it
-    // was in flight. NoteLayer's container isolation already keeps a late import
-    // from leaking note DOM, but bailing here also avoids the stale React setState
-    // callbacks (emitSelection etc.) and wasted work a disposed controller would do.
+    // The parse above is async, so the controller may have been disposed meanwhile;
+    // bail before firing stale React callbacks (emitSelection etc.) and wasted work.
     if (this.disposed) {
       return;
     }
@@ -1597,7 +1596,6 @@ export class HyperbolicCanvasController {
 
   private selectArrow(arrowId: string | null): void {
     this.selectedArrowId = arrowId;
-    // Arrow and note selections are mutually exclusive.
     if (arrowId !== null && this.selectedNoteId !== null) {
       this.selectedNoteId = null;
       this.emitSelection();
@@ -1700,9 +1698,9 @@ export class HyperbolicCanvasController {
   }
 
   private flyTo(target: DiskPoint, options: FlyToOptions = {}): void {
-    if (this.flying) {
-      return;
-    }
+    // Interrupt and settle any in-flight fly so this navigation takes over from
+    // the prior destination instead of being dropped.
+    this.cancelFly(true);
 
     const ms = options.ms ?? 450;
     const startView = this.view;
@@ -1716,11 +1714,39 @@ export class HyperbolicCanvasController {
     }
     this.flying = true;
 
+    // Jump straight to the destination. Reused both for the final frame and for
+    // settling the fly when it is interrupted partway (see cancelFly).
+    const settle = (): void => {
+      this.flying = false;
+      this.flyRafId = null;
+      this.flySettle = null;
+      this.view = transformFromPointPair(target, [0, 0]);
+      if (animateZoom) {
+        this.zoom = targetZoom;
+        this.emitZoomState();
+      }
+      this.reanchorIfNeeded();
+      this.render();
+      options.onDone?.();
+    };
+    this.flySettle = settle;
+
     const step = (): void => {
-      // A throw here (e.g. a degenerate target) must not leave `flying` stuck true,
+      if (this.disposed) {
+        this.flying = false;
+        this.flyRafId = null;
+        this.flySettle = null;
+        return;
+      }
+      // A throw here (e.g. a degenerate target) must not leave the fly state stuck,
       // which would wedge every later interaction. Reset it before re-throwing.
       try {
         const t = Math.min(1, (performance.now() - startTime) / ms);
+        if (t >= 1) {
+          settle();
+          return;
+        }
+
         const eased = 1 - (1 - t) ** 3;
         const position: DiskPoint = [
           startPosition[0] * (1 - eased),
@@ -1732,26 +1758,33 @@ export class HyperbolicCanvasController {
           this.emitZoomState();
         }
         this.render();
-
-        if (t < 1) {
-          requestAnimationFrame(step);
-        } else {
-          this.flying = false;
-          if (animateZoom) {
-            this.zoom = targetZoom;
-            this.emitZoomState();
-          }
-          this.reanchorIfNeeded();
-          this.render();
-          options.onDone?.();
-        }
+        this.flyRafId = requestAnimationFrame(step);
       } catch (error) {
         this.flying = false;
+        this.flyRafId = null;
+        this.flySettle = null;
         throw error;
       }
     };
 
-    requestAnimationFrame(step);
+    this.flyRafId = requestAnimationFrame(step);
+  }
+
+  // Stop any in-flight fly. When settle is true it first jumps to the fly's
+  // destination, so navigation history and the resting view reflect the logical
+  // target rather than wherever the animation happened to be; dispose passes
+  // false to stop silently without a final render or onDone.
+  private cancelFly(settle: boolean): void {
+    if (this.flyRafId !== null) {
+      cancelAnimationFrame(this.flyRafId);
+      this.flyRafId = null;
+    }
+    const settleAtTarget = this.flySettle;
+    this.flySettle = null;
+    this.flying = false;
+    if (settle) {
+      settleAtTarget?.();
+    }
   }
 
   private currentViewCenter(): DiskPoint {

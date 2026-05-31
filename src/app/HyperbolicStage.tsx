@@ -24,6 +24,7 @@ import {
   HyperbolicCanvasController,
   type InteractionMode,
   type NavigationHistoryState,
+  type SelectedImageToolbar,
   type ZoomState,
 } from '../interaction/controller';
 import type { ArrowHeadMode } from '../model/arrow';
@@ -35,6 +36,7 @@ import { AppMenu } from './AppMenu';
 import { ArrowInspector } from './ArrowInspector';
 import { CoordinateIndicator } from './CoordinateIndicator';
 import { CoordinateNotePreviewPopover } from './CoordinateNotePreviewPopover';
+import { ImageNoteToolbar } from './ImageNoteToolbar';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
 import { Tooltip } from './Tooltip';
 
@@ -48,6 +50,7 @@ export const HyperbolicStage = () => {
   const [mode, setMode] = useState<InteractionMode>('pan');
   const [editingSession, setEditingSession] = useState<EditingSession | null>(null);
   const [arrowSelection, setArrowSelection] = useState<ArrowSelection | null>(null);
+  const [selectedImage, setSelectedImage] = useState<SelectedImageToolbar | null>(null);
   const [coordinateTarget, setCoordinateTarget] = useState<CoordinateTarget | null>(null);
   const [coordinateNotePreview, setCoordinateNotePreview] = useState<CoordinateNotePreview | null>(
     null,
@@ -91,6 +94,7 @@ export const HyperbolicStage = () => {
       onArrowSelectionChange: setArrowSelection,
       onCoordinateTargetChange: setCoordinateTarget,
       onCoordinateNotePreviewChange: setCoordinateNotePreview,
+      onSelectedImageChange: setSelectedImage,
       onSelectionChange: setSelection,
       onZoomStateChange: setZoomState,
       onHistoryStateChange: setHistory,
@@ -225,6 +229,13 @@ export const HyperbolicStage = () => {
           onCommit={commitEditingDraft}
           onCancel={() => controllerRef.current?.cancelEditing()}
           onDelete={() => controllerRef.current?.deleteEditingNote()}
+        />
+      ) : null}
+      {selectedImage && mode === 'edit' ? (
+        <ImageNoteToolbar
+          key={selectedImage.noteId}
+          position={selectedImage.screenPosition}
+          onDelete={() => controllerRef.current?.deleteSelectedNote()}
         />
       ) : null}
       {arrowSelection && mode === 'arrow' ? (

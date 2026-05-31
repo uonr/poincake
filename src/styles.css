@@ -165,6 +165,11 @@ body {
   cursor: text;
 }
 
+/* Image notes can't be text-edited, so the text caret is misleading. */
+#stage.mode-edit .item[data-note-content-kind="image"]:not(.editing) {
+  cursor: pointer;
+}
+
 #stage.mode-move .item:not(.editing) {
   cursor: move;
 }
@@ -481,6 +486,28 @@ body {
 
 .note-editor-actions button.danger {
   color: #a43737;
+}
+
+.image-note-toolbar {
+  position: absolute;
+  transform: translate(-35%, -65%);
+  z-index: 12;
+}
+
+.image-note-toolbar button.danger {
+  align-items: center;
+  background: var(--surface-elevated);
+  border: 0.5px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  color: #a43737;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 9px;
+}
+
+.image-note-toolbar button.danger:hover {
+  background: var(--surface);
 }
 
 .arrow-inspector {

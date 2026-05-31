@@ -84,6 +84,7 @@ export type HyperbolicCanvasControllerOptions = Readonly<{
   onArrowSelectionChange?: (selection: ArrowSelection | null) => void;
   onCoordinateTargetChange?: (target: CoordinateTarget | null) => void;
   onCoordinateNotePreviewChange?: (preview: CoordinateNotePreview | null) => void;
+  onSelectedImageChange?: (toolbar: SelectedImageToolbar | null) => void;
   onZoomStateChange?: (state: ZoomState) => void;
   onHistoryStateChange?: (state: HistoryState) => void;
   onNavigationHistoryStateChange?: (state: NavigationHistoryState) => void;
@@ -110,6 +111,14 @@ export type CoordinateNotePreview = Readonly<{
 type CoordinateJumpPreview = Readonly<{
   source: Note;
   target: Note;
+}>;
+
+// Image notes can't be text-edited, so they get a small floating delete button
+// in edit mode instead of the note editor. Anchored to the image's top-right
+// corner in stage coordinates, re-emitted each render so it tracks pan/zoom.
+export type SelectedImageToolbar = Readonly<{
+  noteId: NoteId;
+  screenPosition: ScreenPoint;
 }>;
 
 export class HyperbolicCanvasController {
@@ -1378,6 +1387,42 @@ export class HyperbolicCanvasController {
     });
   }
 
+  private emitSelectedImage(): void {
+    const handler = this.options.onSelectedImageChange;
+    if (!handler) {
+      return;
+    }
+
+    const note = this.selectedNote();
+    const stageRect = this.stageRect;
+    if (
+      !note ||
+      note.content.kind !== 'image' ||
+      this.editingNoteId !== null ||
+      this.pointerMode === 'item-drag' ||
+      !stageRect
+    ) {
+      handler(null);
+      return;
+    }
+
+    const element = this.noteLayer.getElement(note.id);
+    if (!element) {
+      handler(null);
+      return;
+    }
+
+    // The element rect already reflects the CSS scale, so the corner tracks zoom.
+    const rect = element.getBoundingClientRect();
+    handler({
+      noteId: note.id,
+      screenPosition: {
+        x: rect.right - stageRect.left,
+        y: rect.top - stageRect.top,
+      },
+    });
+  }
+
   private updateSnapCursor(clientX: number, clientY: number): void {
     const viewport = this.viewport();
     const snapped = this.world.grid.snapScreenPoint(clientX, clientY, this.view, viewport);
@@ -1846,6 +1891,7 @@ export class HyperbolicCanvasController {
       this.selectedNoteId,
     );
     this.emitEditingSession(viewport);
+    this.emitSelectedImage();
   }
 }
 

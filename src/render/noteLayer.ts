@@ -24,11 +24,9 @@ export class NoteLayer {
   private readonly container: HTMLDivElement;
 
   constructor(stage: HTMLElement) {
-    // Own a dedicated layer element rather than appending notes straight onto the
-    // shared #stage. dispose() removes it as a single unit, so a note appended by
-    // a late async callback (e.g. an import that resolves after a StrictMode
-    // unmount) lands in a detached subtree instead of polluting a stage that
-    // another controller instance may now own.
+    // Own a dedicated layer element instead of appending notes onto the shared
+    // #stage, so dispose() removes them as a unit and a note appended by a late
+    // async callback lands in a detached subtree rather than on the live stage.
     this.container = document.createElement('div');
     this.container.className = 'note-layer';
     stage.appendChild(this.container);

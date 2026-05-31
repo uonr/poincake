@@ -187,8 +187,7 @@ export class ArrowLayer {
 
     if (options.dashed) {
       // A dash pattern can't survive being split into per-segment strokes (the
-      // phase resets each segment), so transient dashed arrows keep a uniform
-      // width—they live only during a drag and never reach the rim untouched.
+      // phase resets each segment), so transient dashed arrows keep a uniform width.
       ctx.globalAlpha = options.alpha;
       ctx.lineWidth = baseWidth;
       ctx.setLineDash([6, 5]);

@@ -30,8 +30,7 @@ export type GeodesicSample = ProjectedPoint &
   }>;
 
 // The arrow's geodesic, transformed by the current view and projected to screen
-// space as a polyline. Each sample keeps its conformal scale so stroke width can
-// follow hyperbolic foreshortening rather than staying uniform to the rim.
+// space as a polyline of samples.
 export const projectArrowGeodesic = (
   from: DiskPoint,
   to: DiskPoint,

@@ -131,11 +131,10 @@ body {
   z-index: 2;
 }
 
-/* NoteLayer owns this overlay so it can be torn down as a unit. It spans the
-   whole stage, so it must stay transparent to pointer events meant for the
-   canvas beneath; only the notes inside opt back in (see .item). It stays a
-   z-index:auto positioned box so the notes' own z-index still resolves against
-   the canvases rather than being trapped here. */
+/* Full-stage overlay holding the notes. Stays transparent to pointer events
+   meant for the canvas beneath (only the notes opt back in, see .item) and
+   z-index:auto so their z-index still resolves against the canvases rather than
+   being trapped here. */
 .note-layer {
   inset: 0;
   pointer-events: none;

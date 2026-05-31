@@ -161,6 +161,12 @@ body {
   cursor: pointer;
 }
 
+/* Arrows are canvas-drawn, so the hover cursor is driven by a stage class
+   toggled in JS rather than CSS :hover. */
+#stage.mode-pan.arrow-hover {
+  cursor: pointer;
+}
+
 #stage.mode-edit .item:not(.editing) {
   cursor: text;
 }

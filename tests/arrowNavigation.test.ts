@@ -28,14 +28,9 @@ describe('arrow navigation target', () => {
     ).toBeNull();
   });
 
-  it('uses the pointed endpoint for one-headed arrows', () => {
-    expect(arrowNavigationTarget(arrowWithHeadMode('start'), from, to, identityTransform)).toBe(
-      from,
-    );
+  it('uses the farther endpoint regardless of which end is headed', () => {
+    expect(arrowNavigationTarget(arrowWithHeadMode('start'), from, to, identityTransform)).toBe(to);
     expect(arrowNavigationTarget(arrowWithHeadMode('end'), from, to, identityTransform)).toBe(to);
-  });
-
-  it('uses the farther endpoint for two-headed arrows', () => {
     expect(arrowNavigationTarget(arrowWithHeadMode('both'), from, to, identityTransform)).toBe(to);
   });
 });

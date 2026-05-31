@@ -1010,6 +1010,13 @@ export class HyperbolicCanvasController {
 
     this.hoveredNoteId = nextHoveredNoteId;
     this.hoveredArrowId = nextHoveredArrowId;
+    // Arrows live on the canvas, so CSS :hover can't reach them; mirror the
+    // navigability into a stage class so the cursor signals the click target.
+    const hoveredArrow = nextHoveredArrowId
+      ? (this.world.arrows.find((candidate) => candidate.id === nextHoveredArrowId) ?? null)
+      : null;
+    const arrowIsNavigable = hoveredArrow ? hoveredArrow.appearance.headMode !== 'none' : false;
+    this.options.stage.classList.toggle('arrow-hover', arrowIsNavigable);
     this.emitSelection();
     this.emitCoordinateTarget();
     this.emitCoordinateNotePreview(viewport);

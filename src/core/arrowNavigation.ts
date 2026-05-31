@@ -9,16 +9,13 @@ export const arrowNavigationTarget = (
   to: DiskPoint,
   view: DiskTransform,
 ): DiskPoint | null => {
-  switch (arrow.appearance.headMode) {
-    case 'none':
-      return null;
-    case 'start':
-      return from;
-    case 'end':
-      return to;
-    case 'both':
-      return fartherEndpoint(from, to, view);
+  // An arrow without heads has no navigation affordance; anything with a head
+  // jumps to whichever endpoint is currently farther away, regardless of which
+  // end the head decorates.
+  if (arrow.appearance.headMode === 'none') {
+    return null;
   }
+  return fartherEndpoint(from, to, view);
 };
 
 const fartherEndpoint = (from: DiskPoint, to: DiskPoint, view: DiskTransform): DiskPoint => {

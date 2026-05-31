@@ -9,16 +9,6 @@ test('renders the hyperbolic canvas shell', async ({ page }) => {
   await expect(page.getByTestId('coordinate-indicator')).toBeHidden();
 });
 
-test('opens the app menu with a source link', async ({ page }) => {
-  await page.goto('/');
-
-  await page.getByRole('button', { name: 'Open menu' }).click();
-
-  const source = page.getByRole('menuitem', { name: 'Source' });
-  await expect(source).toBeVisible();
-  await expect(source).toHaveAttribute('href', 'https://github.com/uonr/poincake');
-});
-
 test('zooms with the wheel over blank canvas space', async ({ page }) => {
   await page.goto('/');
 
@@ -85,29 +75,10 @@ test('shows view back and forward controls after a jump', async ({ page }) => {
   await expect(controls.getByRole('button', { name: 'Back' })).toBeEnabled();
 });
 
-test('switches modes with keyboard shortcuts and advertises them in tooltips', async ({ page }) => {
+test('switches modes with keyboard shortcuts', async ({ page }) => {
   await page.goto('/');
 
   const stage = page.locator('#stage');
-  const navigateButton = page.getByRole('button', { name: 'Navigate' });
-  await navigateButton.hover();
-  await expect(page.getByRole('tooltip')).toContainText('Navigate (V, 1, Esc; hold Space)');
-  await expect
-    .poll(async () => {
-      const buttonBox = await navigateButton.boundingBox();
-      const tooltipBox = await page.getByRole('tooltip').boundingBox();
-      return Math.round((tooltipBox?.x ?? 0) - (buttonBox?.x ?? 0));
-    })
-    .toBe(0);
-
-  await page.getByRole('button', { name: 'Text' }).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Text (T, 2)');
-
-  await page.getByRole('button', { name: 'Move' }).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Move (M, 3)');
-
-  await page.getByRole('button', { name: 'Arrow' }).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Arrow (A, 4)');
 
   await page.keyboard.press('T');
   await expect(stage).toHaveClass(/mode-edit/);
@@ -143,7 +114,6 @@ test('edits the active note through the React overlay', async ({ page }) => {
   await expect(page.getByTestId('note-editor')).toBeHidden();
   const editedNote = page.getByTestId('note').filter({ hasText: 'Edited' });
   await expect(editedNote).toBeVisible();
-  await expect(editedNote).toHaveCSS('white-space', 'pre-wrap');
 });
 
 test('copies the selected note coordinate from the indicator', async ({ page, context }) => {

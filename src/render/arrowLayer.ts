@@ -3,7 +3,12 @@ import type { DiskTransform } from '../geometry/mobius';
 import type { Arrow, ArrowHeadMode } from '../model/arrow';
 import { arrowColor, arrowHeadMode, arrowLabel } from '../model/arrow';
 import type { NoteColor } from '../model/note';
-import { collapsedArrowDot, polylineMidpoint, projectArrowGeodesic } from './arrowGeometry';
+import {
+  collapsedArrowDot,
+  type GeodesicSample,
+  polylineMidpoint,
+  projectArrowGeodesic,
+} from './arrowGeometry';
 import type { ProjectedPoint, Viewport } from './viewport';
 
 const LINE_WIDTH = 2;
@@ -158,7 +163,7 @@ export class ArrowLayer {
   }
 
   private strokeArrow(
-    points: readonly ProjectedPoint[],
+    points: readonly GeodesicSample[],
     color: string,
     options: Readonly<{
       alpha: number;
@@ -178,8 +183,15 @@ export class ArrowLayer {
     const ctx = this.ctx;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
+    const baseWidth = options.selected ? SELECTED_LINE_WIDTH : LINE_WIDTH;
 
-    const tracePath = (): void => {
+    if (options.dashed) {
+      // A dash pattern can't survive being split into per-segment strokes (the
+      // phase resets each segment), so transient dashed arrows keep a uniform
+      // width—they live only during a drag and never reach the rim untouched.
+      ctx.globalAlpha = options.alpha;
+      ctx.lineWidth = baseWidth;
+      ctx.setLineDash([6, 5]);
       ctx.beginPath();
       ctx.moveTo(first.x, first.y);
       for (let i = 1; i < points.length; i += 1) {
@@ -188,23 +200,18 @@ export class ArrowLayer {
           ctx.lineTo(point.x, point.y);
         }
       }
-    };
-
-    // A soft wider stroke under the selected arrow reads as a highlight without a
-    // separate color, which would otherwise clash with the four-swatch palette.
-    if (options.selected) {
-      ctx.globalAlpha = SELECTED_HALO_ALPHA;
-      ctx.lineWidth = SELECTED_HALO_WIDTH;
-      tracePath();
       ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      // A soft wider stroke under the selected arrow reads as a highlight without
+      // a separate color, which would otherwise clash with the four-swatch palette.
+      if (options.selected) {
+        ctx.globalAlpha = SELECTED_HALO_ALPHA;
+        this.strokeTapered(points, SELECTED_HALO_WIDTH);
+      }
+      ctx.globalAlpha = options.alpha;
+      this.strokeTapered(points, baseWidth);
     }
-
-    ctx.globalAlpha = options.alpha;
-    ctx.lineWidth = options.selected ? SELECTED_LINE_WIDTH : LINE_WIDTH;
-    ctx.setLineDash(options.dashed ? [6, 5] : []);
-    tracePath();
-    ctx.stroke();
-    ctx.setLineDash([]);
 
     if (options.headMode === 'start' || options.headMode === 'both') {
       this.drawHead(points, 'start');
@@ -213,6 +220,30 @@ export class ArrowLayer {
       this.drawHead(points, 'end');
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Canvas 2D can't vary lineWidth within a single stroke, so the polyline is
+  // stroked one segment at a time with a width scaled by the local conformal
+  // factor. The globally-set round line caps overlap at the joints, blending the
+  // width steps into a smooth taper toward the disk edge.
+  private strokeTapered(points: readonly GeodesicSample[], baseWidth: number): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const a = points[i];
+      const b = points[i + 1];
+      if (!a || !b) {
+        continue;
+      }
+      const width = baseWidth * ((a.scale + b.scale) / 2);
+      if (width <= 0) {
+        continue;
+      }
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
   }
 
   private drawLabel(at: ProjectedPoint, text: string, color: string, halo: string): void {
@@ -234,8 +265,17 @@ export class ArrowLayer {
     ctx.fillText(text, at.x, at.y + 0.5);
   }
 
-  private drawHead(points: readonly ProjectedPoint[], endpoint: 'start' | 'end'): void {
+  private drawHead(points: readonly GeodesicSample[], endpoint: 'start' | 'end'): void {
     const tip = endpoint === 'start' ? points[0] : points[points.length - 1];
+    if (!tip) {
+      return;
+    }
+    // The head shares the line's foreshortening so it stays proportional to the
+    // local stroke width as the arrow approaches the rim.
+    const headLength = HEAD_LENGTH * tip.scale;
+    if (headLength < 1e-6) {
+      return;
+    }
     // Walk back along the polyline to a point a head-length away so the head
     // aligns with the arc's tangent rather than a single tiny final segment.
     let anchor: ProjectedPoint | undefined;
@@ -244,17 +284,17 @@ export class ArrowLayer {
     const step = endpoint === 'start' ? 1 : -1;
     for (let i = startIndex; i !== endIndex; i += step) {
       const candidate = points[i];
-      if (!candidate || !tip) {
+      if (!candidate) {
         continue;
       }
       const dx = tip.x - candidate.x;
       const dy = tip.y - candidate.y;
       anchor = candidate;
-      if (dx * dx + dy * dy >= HEAD_LENGTH * HEAD_LENGTH) {
+      if (dx * dx + dy * dy >= headLength * headLength) {
         break;
       }
     }
-    if (!tip || !anchor) {
+    if (!anchor) {
       return;
     }
 
@@ -268,13 +308,13 @@ export class ArrowLayer {
     const uy = dy / length;
 
     const leftX =
-      tip.x - HEAD_LENGTH * (ux * Math.cos(HEAD_HALF_ANGLE) - uy * Math.sin(HEAD_HALF_ANGLE));
+      tip.x - headLength * (ux * Math.cos(HEAD_HALF_ANGLE) - uy * Math.sin(HEAD_HALF_ANGLE));
     const leftY =
-      tip.y - HEAD_LENGTH * (uy * Math.cos(HEAD_HALF_ANGLE) + ux * Math.sin(HEAD_HALF_ANGLE));
+      tip.y - headLength * (uy * Math.cos(HEAD_HALF_ANGLE) + ux * Math.sin(HEAD_HALF_ANGLE));
     const rightX =
-      tip.x - HEAD_LENGTH * (ux * Math.cos(HEAD_HALF_ANGLE) + uy * Math.sin(HEAD_HALF_ANGLE));
+      tip.x - headLength * (ux * Math.cos(HEAD_HALF_ANGLE) + uy * Math.sin(HEAD_HALF_ANGLE));
     const rightY =
-      tip.y - HEAD_LENGTH * (uy * Math.cos(HEAD_HALF_ANGLE) - ux * Math.sin(HEAD_HALF_ANGLE));
+      tip.y - headLength * (uy * Math.cos(HEAD_HALF_ANGLE) - ux * Math.sin(HEAD_HALF_ANGLE));
 
     const ctx = this.ctx;
     ctx.beginPath();

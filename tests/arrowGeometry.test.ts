@@ -31,8 +31,19 @@ const arrow: ArrowGeometry = {
 describe('arrow geometry', () => {
   it('projects endpoints to the expected screen coordinates', () => {
     const points = projectArrowGeodesic(arrow.from, arrow.to, identityTransform, viewport);
-    expect(points[0]).toEqual({ x: 500, y: 300 });
-    expect(points[points.length - 1]).toEqual({ x: 300, y: 300 });
+    expect(points[0]).toEqual({ x: 500, y: 300, scale: 0.96 });
+    expect(points[points.length - 1]).toEqual({ x: 300, y: 300, scale: 0.96 });
+  });
+
+  it('carries the conformal scale so strokes can taper toward the rim', () => {
+    const points = projectArrowGeodesic([0.1, 0], [0.95, 0], identityTransform, viewport);
+    const first = points[0];
+    const last = points[points.length - 1];
+    // Near the centre the scale stays close to 1; near the rim it collapses
+    // toward 0, which is what drives the width taper.
+    expect(first?.scale).toBeCloseTo(0.99, 6);
+    expect(last?.scale).toBeGreaterThan(0);
+    expect(last?.scale).toBeLessThan(0.12);
   });
 
   it('reports the projected midpoint at the geodesic centre', () => {

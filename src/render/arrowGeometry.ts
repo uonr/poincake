@@ -21,18 +21,30 @@ export type ArrowGeometry = Readonly<{
   to: DiskPoint;
 }>;
 
+// A projected polyline vertex that also carries the conformal scale (1 - |z|²)
+// at its view-space position, so the renderer can taper the stroke toward the
+// disk edge the same way notes shrink there.
+export type GeodesicSample = ProjectedPoint &
+  Readonly<{
+    scale: number;
+  }>;
+
 // The arrow's geodesic, transformed by the current view and projected to screen
-// space as a polyline.
+// space as a polyline. Each sample keeps its conformal scale so stroke width can
+// follow hyperbolic foreshortening rather than staying uniform to the rim.
 export const projectArrowGeodesic = (
   from: DiskPoint,
   to: DiskPoint,
   view: DiskTransform,
   viewport: Viewport,
   segments = ARROW_SEGMENTS,
-): ProjectedPoint[] => {
+): GeodesicSample[] => {
   const a = applyTransform(view, from);
   const b = applyTransform(view, to);
-  return sampleGeodesic(a, b, segments).map((point) => projectDiskPoint(point, viewport));
+  return sampleGeodesic(a, b, segments).map((point) => ({
+    ...projectDiskPoint(point, viewport),
+    scale: Math.max(0, 1 - abs2(point)),
+  }));
 };
 
 export const polylineMidpoint = (points: readonly ProjectedPoint[]): ProjectedPoint =>

@@ -30,6 +30,7 @@ import type { ArrowHeadMode } from '../model/arrow';
 import type { HistoryState } from '../model/history';
 import type { NoteColor } from '../model/note';
 import type { NoteDraft } from '../model/noteDraft';
+import { gzipText, readWorldFileText } from '../model/worldFileArchive';
 import { AppMenu } from './AppMenu';
 import { ArrowInspector } from './ArrowInspector';
 import { CoordinateIndicator } from './CoordinateIndicator';
@@ -189,17 +190,18 @@ export const HyperbolicStage = () => {
       return;
     }
 
-    const blob = new Blob([text], { type: 'application/json' });
+    const blob = await gzipText(text);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `poincake-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `poincake-${new Date().toISOString().slice(0, 10)}.poin`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
-  const importContent = async (text: string): Promise<void> => {
+  const importContent = async (file: File): Promise<void> => {
     try {
+      const text = await readWorldFileText(file);
       await controllerRef.current?.importWorldFileText(text);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Import failed.');

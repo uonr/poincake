@@ -6,7 +6,7 @@ const SOURCE_URL = 'https://github.com/uonr/poincake';
 
 type AppMenuProps = Readonly<{
   onExport: () => void;
-  onImport: (text: string) => void;
+  onImport: (file: File) => void;
 }>;
 
 export const AppMenu = ({ onExport, onImport }: AppMenuProps) => {
@@ -56,17 +56,13 @@ export const AppMenu = ({ onExport, onImport }: AppMenuProps) => {
     }
   };
 
-  const importContent = async (file: File | undefined): Promise<void> => {
+  const importContent = (file: File | undefined): void => {
     if (!file) {
       return;
     }
 
-    try {
-      onImport(await file.text());
-      setOpen(false);
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Import failed.');
-    }
+    onImport(file);
+    setOpen(false);
   };
 
   return (
@@ -118,11 +114,11 @@ export const AppMenu = ({ onExport, onImport }: AppMenuProps) => {
       <input
         ref={importInputRef}
         type="file"
-        accept="application/json,.json"
+        accept=".poin,.json,.gz,application/json,application/gzip"
         className="visually-hidden"
         tabIndex={-1}
         onChange={(event) => {
-          void importContent(event.currentTarget.files?.[0]);
+          importContent(event.currentTarget.files?.[0]);
         }}
       />
     </div>

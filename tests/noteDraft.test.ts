@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { formatGridAnchor } from '../src/core/coordinateIndicator';
+import { gridAnchor } from '../src/grid/tilingAddress';
 import type { NoteDraft } from '../src/model/noteDraft';
 import { parseNoteDraft } from '../src/model/noteDraft';
 
@@ -26,6 +28,27 @@ describe('note draft parsing', () => {
     expect(parsed).toEqual({
       ok: false,
       reason: 'Note text cannot be empty.',
+    });
+  });
+
+  it('parses coordinate text into a coordinate link content variant', () => {
+    const anchor = gridAnchor([], { kind: 'center' });
+    const text = formatGridAnchor(anchor);
+
+    const parsed = parseNoteDraft({ text, color: 'c1' });
+
+    expect(parsed).toEqual({
+      ok: true,
+      value: {
+        content: {
+          kind: 'coordinate-link',
+          text,
+          target: anchor,
+        },
+        appearance: {
+          color: 'c1',
+        },
+      },
     });
   });
 

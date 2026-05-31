@@ -68,16 +68,27 @@ const gridAnchorSchema = z
     }),
   );
 
+const noteContentSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('plain-text'),
+      text: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('coordinate-link'),
+      text: z.string(),
+      target: gridAnchorSchema,
+    })
+    .strict(),
+]);
+
 const noteSchema = z
   .object({
     id: z.string().min(1),
     anchor: gridAnchorSchema,
-    content: z
-      .object({
-        kind: z.literal('plain-text'),
-        text: z.string(),
-      })
-      .strict(),
+    content: noteContentSchema,
     appearance: z
       .object({
         color: noteColorSchema,
@@ -153,6 +164,14 @@ const worldFileContentSchema = z
 
     for (const note of content.notes) {
       rejectMissingChart(note.anchor, chartIds, context, ['notes', note.id, 'anchor']);
+      if (note.content.kind === 'coordinate-link') {
+        rejectMissingChart(note.content.target, chartIds, context, [
+          'notes',
+          note.id,
+          'content',
+          'target',
+        ]);
+      }
     }
     for (const arrow of content.arrows) {
       rejectMissingChart(arrow.from, chartIds, context, ['arrows', arrow.id, 'from']);
@@ -242,9 +261,20 @@ const cloneContent = (content: WorldFileContent): WorldFileContent => ({
 const cloneNote = (note: Note): Note => ({
   ...note,
   anchor: cloneAnchorForFile(note.anchor),
-  content: { ...note.content },
+  content: cloneNoteContentForFile(note.content),
   appearance: { ...note.appearance },
 });
+
+const cloneNoteContentForFile = (content: Note['content']): Note['content'] => {
+  if (content.kind === 'coordinate-link') {
+    return {
+      ...content,
+      target: cloneAnchorForFile(content.target),
+    };
+  }
+
+  return { ...content };
+};
 
 const cloneArrow = (arrow: Arrow): Arrow => ({
   ...arrow,

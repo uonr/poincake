@@ -332,9 +332,20 @@ const deleteArrow = (world: HyperbolicWorldState, arrowId: ArrowId): void => {
 const cloneNote = (note: Note): Note => ({
   ...note,
   anchor: cloneAnchor(note.anchor),
-  content: { ...note.content },
+  content: cloneNoteContent(note.content),
   appearance: { ...note.appearance },
 });
+
+const cloneNoteContent = (content: NoteContent): NoteContent => {
+  if (content.kind === 'coordinate-link') {
+    return {
+      ...content,
+      target: cloneAnchor(content.target),
+    };
+  }
+
+  return { ...content };
+};
 
 const cloneArrow = (arrow: Arrow): Arrow => ({
   ...arrow,

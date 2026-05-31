@@ -1,3 +1,4 @@
+import { parseGridAnchorCoordinate } from '../core/coordinateIndicator';
 import type { NoteAppearance, NoteColor, NoteContent } from './note';
 
 export type NoteDraft = Readonly<{
@@ -29,13 +30,26 @@ export const parseNoteDraft = (draft: NoteDraft): ParseResult<ParsedNoteDraft> =
   return {
     ok: true,
     value: {
-      content: {
-        kind: 'plain-text',
-        text,
-      },
+      content: parseNoteContent(text),
       appearance: {
         color: draft.color,
       },
     },
+  };
+};
+
+export const parseNoteContent = (text: string): NoteContent => {
+  const target = parseGridAnchorCoordinate(text);
+  if (target) {
+    return {
+      kind: 'coordinate-link',
+      text,
+      target,
+    };
+  }
+
+  return {
+    kind: 'plain-text',
+    text,
   };
 };

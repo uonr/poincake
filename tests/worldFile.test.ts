@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatGridAnchor } from '../src/core/coordinateIndicator';
 import { AnchoredGrid } from '../src/grid/anchoredGrid';
 import { generateHyperbolicTiling } from '../src/grid/hyperbolicTiling';
 import { ROOT_CHART_ID } from '../src/grid/tilingAddress';
@@ -30,6 +31,20 @@ const createWorld = () => {
     createdAt: 1,
     updatedAt: 2,
   };
+  const coordinateNote: Note = {
+    id: 'note-coordinate',
+    anchor: secondAnchor,
+    content: {
+      kind: 'coordinate-link',
+      text: formatGridAnchor(firstAnchor),
+      target: firstAnchor,
+    },
+    appearance: {
+      color: 'c4',
+    },
+    createdAt: 2,
+    updatedAt: 3,
+  };
   const arrow: Arrow = {
     id: 'arrow-2',
     from: firstAnchor,
@@ -43,7 +58,7 @@ const createWorld = () => {
     updatedAt: 4,
   };
 
-  return new HyperbolicWorldState([note], grid, [arrow]);
+  return new HyperbolicWorldState([note, coordinateNote], grid, [arrow]);
 };
 
 describe('world file import/export', () => {
@@ -51,6 +66,10 @@ describe('world file import/export', () => {
     const parsed = parseWorldFileText(stringifyWorldFile(createWorld()));
 
     expect(parsed.notes[0]?.content.text).toBe('Exported note');
+    expect(parsed.notes[1]?.content).toMatchObject({
+      kind: 'coordinate-link',
+      target: parsed.notes[0]?.anchor,
+    });
     expect(parsed.arrows[0]?.label).toBe('Link');
     expect(parsed.charts.map((chart) => chart.id)).toContain(ROOT_CHART_ID);
   });

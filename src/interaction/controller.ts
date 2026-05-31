@@ -1,6 +1,6 @@
 import { arrowNavigationTarget } from '../core/arrowNavigation';
 import type { ArrowSelection } from '../core/arrowSelection';
-import { type CoordinateTarget, parseGridAnchorCoordinate } from '../core/coordinateIndicator';
+import type { CoordinateTarget } from '../core/coordinateIndicator';
 import type { EditingSession, ScreenPoint } from '../core/editingSession';
 import type { SelectionState } from '../core/selectionState';
 import { abs2 } from '../geometry/complex';
@@ -17,7 +17,14 @@ import { type GridAnchor, gridAnchorsEqual } from '../grid/tilingAddress';
 import type { Arrow, ArrowHeadMode } from '../model/arrow';
 import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
 import { type HistoryState, WorldHistory } from '../model/history';
-import { type Note, type NoteColor, type NoteId, noteColor, noteDisplayText } from '../model/note';
+import {
+  type Note,
+  type NoteColor,
+  type NoteId,
+  noteColor,
+  noteCoordinateTarget,
+  noteDisplayText,
+} from '../model/note';
 import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
 import { parseExternalLink } from '../model/noteLink';
 import { parseWorldFileText, stringifyWorldFile } from '../model/worldFile';
@@ -986,7 +993,7 @@ export class HyperbolicCanvasController {
       return null;
     }
 
-    const targetAnchor = parseGridAnchorCoordinate(noteDisplayText(source));
+    const targetAnchor = noteCoordinateTarget(source);
     const target = targetAnchor
       ? (this.world.notes.find((candidate) => gridAnchorsEqual(candidate.anchor, targetAnchor)) ??
         null)
@@ -1130,7 +1137,7 @@ export class HyperbolicCanvasController {
   }
 
   private flyToNoteCoordinate(note: Note): boolean {
-    const anchor = parseGridAnchorCoordinate(noteDisplayText(note));
+    const anchor = noteCoordinateTarget(note);
     if (!anchor) {
       return false;
     }

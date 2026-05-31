@@ -1,8 +1,7 @@
-import { parseGridAnchorCoordinate } from '../core/coordinateIndicator';
 import { abs2 } from '../geometry/complex';
 import type { DiskPoint } from '../geometry/disk';
 import { applyTransform, type DiskTransform } from '../geometry/mobius';
-import { type Note, noteColor, noteDisplayText } from '../model/note';
+import { type Note, type NoteContent, noteColor } from '../model/note';
 import { projectDiskPoint, type Viewport } from './viewport';
 
 const SCALE_TEXT = 0.26;
@@ -56,9 +55,8 @@ export class NoteLayer {
         element.classList.add(color);
       }
 
-      const text = noteDisplayText(note);
       if (!element.classList.contains('editing')) {
-        renderNoteContent(element, text);
+        renderNoteContent(element, note.content);
       }
     }
   }
@@ -188,12 +186,13 @@ const clampForProjection = (point: DiskPoint): DiskPoint => {
 const mergedDotCell = (x: number, y: number): string =>
   `${Math.round(x / DOT_MERGE_CELL)},${Math.round(y / DOT_MERGE_CELL)}`;
 
-const renderNoteContent = (element: HTMLDivElement, text: string): void => {
-  const coordinate = parseGridAnchorCoordinate(text);
-  element.dataset.noteContentKind = coordinate ? 'coordinate' : 'text';
-  element.title = coordinate ? text.trim() : '';
+const renderNoteContent = (element: HTMLDivElement, content: NoteContent): void => {
+  const text = content.text;
+  const isCoordinate = content.kind === 'coordinate-link';
+  element.dataset.noteContentKind = isCoordinate ? 'coordinate' : 'text';
+  element.title = isCoordinate ? text.trim() : '';
 
-  if (coordinate) {
+  if (isCoordinate) {
     if (element.firstElementChild?.classList.contains('note-coordinate-icon')) {
       return;
     }

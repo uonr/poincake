@@ -36,6 +36,7 @@ export type ArrowColorResolver = (color: NoteColor) => string;
 export type ArrowDrawOptions = Readonly<{
   selectedArrowId: string | null;
   labelHalo: string;
+  preview: ArrowDraft | null;
 }>;
 
 // 2D overlay that strokes each arrow as a projected geodesic polyline (matching
@@ -103,21 +104,40 @@ export class ArrowLayer {
     }
 
     if (draft) {
-      const color = colorFor(draft.color);
-      const dot = collapsedArrowDot(draft.from, draft.to, view, viewport);
-      if (dot) {
-        this.drawDot(dot, color, false, 0.65);
-        return;
-      }
-
-      const points = projectArrowGeodesic(draft.from, draft.to, view, viewport);
-      this.strokeArrow(points, color, {
+      this.drawTransientArrow(draft, view, viewport, colorFor(draft.color), {
         alpha: 0.65,
         dashed: true,
-        headMode: 'end',
-        selected: false,
       });
     }
+
+    if (options.preview) {
+      this.drawTransientArrow(options.preview, view, viewport, colorFor(options.preview.color), {
+        alpha: 0.38,
+        dashed: false,
+      });
+    }
+  }
+
+  private drawTransientArrow(
+    arrow: ArrowDraft,
+    view: DiskTransform,
+    viewport: Viewport,
+    color: string,
+    options: Readonly<{ alpha: number; dashed: boolean }>,
+  ): void {
+    const dot = collapsedArrowDot(arrow.from, arrow.to, view, viewport);
+    if (dot) {
+      this.drawDot(dot, color, false, options.alpha);
+      return;
+    }
+
+    const points = projectArrowGeodesic(arrow.from, arrow.to, view, viewport);
+    this.strokeArrow(points, color, {
+      alpha: options.alpha,
+      dashed: options.dashed,
+      headMode: 'end',
+      selected: false,
+    });
   }
 
   private drawDot(at: ProjectedPoint, color: string, selected: boolean, alpha = DOT_OPACITY): void {

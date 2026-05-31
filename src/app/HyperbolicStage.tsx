@@ -20,6 +20,7 @@ import { seedNotes } from '../demo/seedNotes';
 import { AnchoredGrid } from '../grid/anchoredGrid';
 import { generateHyperbolicTiling } from '../grid/hyperbolicTiling';
 import {
+  type CoordinateNotePreview,
   HyperbolicCanvasController,
   type InteractionMode,
   type NavigationHistoryState,
@@ -32,6 +33,7 @@ import type { NoteDraft } from '../model/noteDraft';
 import { AppMenu } from './AppMenu';
 import { ArrowInspector } from './ArrowInspector';
 import { CoordinateIndicator } from './CoordinateIndicator';
+import { CoordinateNotePreviewPopover } from './CoordinateNotePreviewPopover';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
 import { Tooltip } from './Tooltip';
 
@@ -46,6 +48,9 @@ export const HyperbolicStage = () => {
   const [editingSession, setEditingSession] = useState<EditingSession | null>(null);
   const [arrowSelection, setArrowSelection] = useState<ArrowSelection | null>(null);
   const [coordinateTarget, setCoordinateTarget] = useState<CoordinateTarget | null>(null);
+  const [coordinateNotePreview, setCoordinateNotePreview] = useState<CoordinateNotePreview | null>(
+    null,
+  );
   const [, setSelection] = useState<SelectionState>(emptySelectionState);
   const [history, setHistory] = useState<HistoryState>({
     canUndo: false,
@@ -84,6 +89,7 @@ export const HyperbolicStage = () => {
       onEditingSessionChange: setEditingSession,
       onArrowSelectionChange: setArrowSelection,
       onCoordinateTargetChange: setCoordinateTarget,
+      onCoordinateNotePreviewChange: setCoordinateNotePreview,
       onSelectionChange: setSelection,
       onZoomStateChange: setZoomState,
       onHistoryStateChange: setHistory,
@@ -222,6 +228,9 @@ export const HyperbolicStage = () => {
           onChangeLabel={changeArrowLabel}
           onDelete={() => controllerRef.current?.deleteSelectedArrow()}
         />
+      ) : null}
+      {coordinateNotePreview ? (
+        <CoordinateNotePreviewPopover preview={coordinateNotePreview} />
       ) : null}
       <CoordinateIndicator target={coordinateTarget} />
       <div className="top-left-controls">

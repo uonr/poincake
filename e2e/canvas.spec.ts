@@ -165,6 +165,40 @@ test('copies the selected note coordinate from the indicator', async ({ page, co
     .toBe(shownCoordinate);
 });
 
+test('previews the target note when hovering a coordinate note', async ({ page }) => {
+  await page.goto('/');
+
+  const textNotes = page.getByTestId('note').and(page.locator('[data-note-render="text"]'));
+  const targetNote = textNotes.first();
+  const targetText = (await targetNote.textContent())?.trim();
+  if (!targetText) {
+    throw new Error('Target note has no text.');
+  }
+
+  await targetNote.click();
+  const coordinate = await page.getByTestId('coordinate-indicator').locator('code').textContent();
+  if (!coordinate) {
+    throw new Error('Selected note coordinate is missing.');
+  }
+
+  const sourceNote = textNotes.nth(1);
+  const sourceNoteId = await sourceNote.getAttribute('data-note-id');
+  if (!sourceNoteId) {
+    throw new Error('Source note id is missing.');
+  }
+
+  await page.getByRole('button', { name: 'Text' }).click();
+  await sourceNote.click();
+  await page.getByLabel('Note text').fill(coordinate);
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  const coordinateNote = page.locator(`[data-testid="note"][data-note-id="${sourceNoteId}"]`);
+  await expect(coordinateNote).toHaveAttribute('data-note-content-kind', 'coordinate');
+  await coordinateNote.hover();
+
+  await expect(page.getByTestId('coordinate-note-preview')).toContainText(targetText);
+});
+
 test('shows the arrow inspector after drawing an arrow', async ({ page }) => {
   await page.goto('/');
 

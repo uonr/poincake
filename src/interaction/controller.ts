@@ -1,7 +1,7 @@
 import { arrowNavigationTarget } from '../core/arrowNavigation';
 import type { ArrowSelection } from '../core/arrowSelection';
 import { type CoordinateTarget, parseGridAnchorCoordinate } from '../core/coordinateIndicator';
-import type { EditingSession } from '../core/editingSession';
+import type { EditingSession, ScreenPoint } from '../core/editingSession';
 import type { SelectionState } from '../core/selectionState';
 import { abs2 } from '../geometry/complex';
 import { clampDisk, type DiskPoint } from '../geometry/disk';
@@ -17,7 +17,7 @@ import { type GridAnchor, gridAnchorsEqual } from '../grid/tilingAddress';
 import type { Arrow, ArrowHeadMode } from '../model/arrow';
 import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
 import { type HistoryState, WorldHistory } from '../model/history';
-import { type Note, type NoteColor, noteColor, noteDisplayText } from '../model/note';
+import { type Note, type NoteColor, type NoteId, noteColor, noteDisplayText } from '../model/note';
 import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
 import { parseExternalLink } from '../model/noteLink';
 import { parseWorldFileText, stringifyWorldFile } from '../model/worldFile';
@@ -73,6 +73,7 @@ export type HyperbolicCanvasControllerOptions = Readonly<{
   onSelectionChange?: (selection: SelectionState) => void;
   onArrowSelectionChange?: (selection: ArrowSelection | null) => void;
   onCoordinateTargetChange?: (target: CoordinateTarget | null) => void;
+  onCoordinateNotePreviewChange?: (preview: CoordinateNotePreview | null) => void;
   onZoomStateChange?: (state: ZoomState) => void;
   onHistoryStateChange?: (state: HistoryState) => void;
   onNavigationHistoryStateChange?: (state: NavigationHistoryState) => void;
@@ -86,6 +87,19 @@ export type ZoomState = Readonly<{
 export type NavigationHistoryState = Readonly<{
   canGoBack: boolean;
   canGoForward: boolean;
+}>;
+
+export type CoordinateNotePreview = Readonly<{
+  sourceNoteId: NoteId;
+  targetNoteId: NoteId;
+  text: string;
+  color: NoteColor;
+  screenPosition: ScreenPoint;
+}>;
+
+type CoordinateJumpPreview = Readonly<{
+  source: Note;
+  target: Note;
 }>;
 
 export class HyperbolicCanvasController {
@@ -423,6 +437,7 @@ export class HyperbolicCanvasController {
     this.options.onArrowSelectionChange?.(null);
     this.emitSelection();
     this.emitCoordinateTarget();
+    this.emitCoordinateNotePreview();
     this.emitHistoryState();
     this.emitNavigationHistoryState();
     this.requestRender();
@@ -548,6 +563,10 @@ export class HyperbolicCanvasController {
     if (!gestureButton) {
       return;
     }
+    this.hoveredNoteId = null;
+    this.hoveredArrowId = null;
+    this.emitCoordinateNotePreview();
+    this.requestRender();
 
     if (this.pointerMode === 'editing') {
       this.cancelEditing();
@@ -778,6 +797,7 @@ export class HyperbolicCanvasController {
     this.invalidateWorldPointCache();
     this.noteLayer.sync(this.world.notes);
     this.emitCoordinateTarget();
+    this.emitCoordinateNotePreview();
   }
 
   private afterHistoryChange(): void {
@@ -794,6 +814,7 @@ export class HyperbolicCanvasController {
     // inspector UI stays in sync.
     this.emitArrowSelection(this.viewport());
     this.emitCoordinateTarget();
+    this.emitCoordinateNotePreview();
     this.emitHistoryState();
     this.requestRender();
   }
@@ -851,6 +872,8 @@ export class HyperbolicCanvasController {
     this.hoveredArrowId = nextHoveredArrowId;
     this.emitSelection();
     this.emitCoordinateTarget();
+    this.emitCoordinateNotePreview(viewport);
+    this.requestRender();
   }
 
   private emitSelection(): void {
@@ -926,6 +949,53 @@ export class HyperbolicCanvasController {
     }
 
     this.options.onCoordinateTargetChange(null);
+  }
+
+  private emitCoordinateNotePreview(viewport: Viewport = this.viewport()): void {
+    if (!this.options.onCoordinateNotePreviewChange) {
+      return;
+    }
+
+    const preview = this.hoveredCoordinateJump();
+    if (!preview) {
+      this.options.onCoordinateNotePreviewChange(null);
+      return;
+    }
+
+    const projected = projectDiskPoint(
+      clampDisk(applyTransform(this.view, this.notePoint(preview.source))),
+      viewport,
+    );
+    this.options.onCoordinateNotePreviewChange({
+      sourceNoteId: preview.source.id,
+      targetNoteId: preview.target.id,
+      text: noteDisplayText(preview.target),
+      color: noteColor(preview.target),
+      screenPosition: {
+        x: projected.x,
+        y: projected.y,
+      },
+    });
+  }
+
+  private hoveredCoordinateJump(): CoordinateJumpPreview | null {
+    const source = this.hoveredNoteId
+      ? (this.world.notes.find((candidate) => candidate.id === this.hoveredNoteId) ?? null)
+      : null;
+    if (!source) {
+      return null;
+    }
+
+    const targetAnchor = parseGridAnchorCoordinate(noteDisplayText(source));
+    const target = targetAnchor
+      ? (this.world.notes.find((candidate) => gridAnchorsEqual(candidate.anchor, targetAnchor)) ??
+        null)
+      : null;
+    if (!target) {
+      return null;
+    }
+
+    return { source, target };
   }
 
   private emitHistoryState(): void {
@@ -1525,6 +1595,19 @@ export class HyperbolicCanvasController {
     };
   }
 
+  private coordinatePreviewArrow(): ArrowDraft | null {
+    const preview = this.hoveredCoordinateJump();
+    if (!preview || gridAnchorsEqual(preview.source.anchor, preview.target.anchor)) {
+      return null;
+    }
+
+    return {
+      from: this.notePoint(preview.source),
+      to: this.notePoint(preview.target),
+      color: noteColor(preview.target),
+    };
+  }
+
   private renderedNotes(): RenderedNote[] {
     return this.world.notes.map((note) => ({ note, point: this.notePoint(note) }));
   }
@@ -1586,6 +1669,7 @@ export class HyperbolicCanvasController {
       {
         selectedArrowId: this.selectedArrowId,
         labelHalo: this.surfaceColor,
+        preview: this.coordinatePreviewArrow(),
       },
     );
 

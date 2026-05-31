@@ -237,6 +237,41 @@ body {
   width: 24px;
 }
 
+.coordinate-note-preview {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-top: 3px solid currentColor;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  max-width: min(280px, calc(100vw - 32px));
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  pointer-events: none;
+  position: absolute;
+  white-space: pre-wrap;
+  z-index: 11;
+}
+
+.coordinate-note-preview.c1 {
+  border-top-color: var(--c1);
+}
+
+.coordinate-note-preview.c2 {
+  border-top-color: var(--c2);
+}
+
+.coordinate-note-preview.c3 {
+  border-top-color: var(--c3);
+}
+
+.coordinate-note-preview.c4 {
+  border-top-color: var(--c4);
+}
+
 .item.as-dot {
   background: currentColor;
   border-radius: 50%;

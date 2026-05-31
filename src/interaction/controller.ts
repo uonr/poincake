@@ -305,6 +305,16 @@ export class HyperbolicCanvasController {
     this.requestRender();
   }
 
+  // Keyboard delete: remove whichever of note/arrow is currently selected.
+  // Only one is ever selected at a time (see selectNote/selectArrow).
+  deleteSelection(): void {
+    if (this.selectedArrowId) {
+      this.deleteSelectedArrow();
+      return;
+    }
+    this.deleteSelectedNote();
+  }
+
   setSelectedNoteColor(color: NoteColor): void {
     const note = this.selectedNote();
     if (!note) {

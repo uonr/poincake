@@ -129,6 +129,12 @@ export const HyperbolicStage = () => {
         return;
       }
 
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        controllerRef.current?.deleteSelection();
+        return;
+      }
+
       const shortcutMode = modeForShortcut(event);
       if (shortcutMode) {
         event.preventDefault();

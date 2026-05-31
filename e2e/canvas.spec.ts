@@ -32,6 +32,39 @@ test('zooms with the wheel over blank canvas space', async ({ page }) => {
   await expect(zoomValue).not.toHaveText(before ?? '');
 });
 
+test('pans with the middle mouse button in non-navigation modes', async ({ page }) => {
+  await page.goto('/');
+
+  for (const mode of ['Text', 'Move', 'Arrow']) {
+    await page.getByRole('button', { name: mode }).click();
+    const note = page.getByTestId('note').first();
+    const before = await note.boundingBox();
+    if (!before) {
+      throw new Error('Note is not laid out.');
+    }
+
+    const point = await findBlankStagePoint(page);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down({ button: 'middle' });
+    await page.mouse.move(point.x + 90, point.y + 60, { steps: 8 });
+    await page.mouse.up({ button: 'middle' });
+
+    await expect
+      .poll(async () => {
+        const after = await note.boundingBox();
+        if (!after) {
+          return 0;
+        }
+        const dx = after.x - before.x;
+        const dy = after.y - before.y;
+        return dx * dx + dy * dy;
+      })
+      .toBeGreaterThan(64);
+  }
+
+  await expect(page.getByTestId('arrow-inspector')).toBeHidden();
+});
+
 test('shows view back and forward controls after a jump', async ({ page }) => {
   await page.goto('/');
 

@@ -45,6 +45,7 @@ type PointerMode =
   | 'item-drag'
   | 'pan-from-item'
   | 'arrow-draw';
+type GestureButton = 'primary' | 'middle';
 
 const ARROW_DEFAULT_COLOR: NoteColor = 'c1';
 const MAX_ZOOM = 2.5;
@@ -98,6 +99,7 @@ export class HyperbolicCanvasController {
   private minZoom = 0.5;
   private view: DiskTransform = identityTransform;
   private pointerMode: PointerMode = 'idle';
+  private gestureButton: GestureButton | null = null;
   private dragStartPoint: DiskPoint | null = null;
   private downPosition: DiskPoint | null = null;
   private didMove = false;
@@ -396,6 +398,7 @@ export class HyperbolicCanvasController {
 
     this.view = identityTransform;
     this.pointerMode = 'idle';
+    this.gestureButton = null;
     this.dragStartPoint = null;
     this.downPosition = null;
     this.didMove = false;
@@ -541,35 +544,48 @@ export class HyperbolicCanvasController {
       return;
     }
 
+    const gestureButton = parseGestureButton(event);
+    if (!gestureButton) {
+      return;
+    }
+
     if (this.pointerMode === 'editing') {
       this.cancelEditing();
       event.preventDefault();
-      return;
+      if (gestureButton === 'primary') {
+        return;
+      }
     }
 
     if (this.flying) {
       return;
     }
 
+    if (gestureButton === 'middle') {
+      event.preventDefault();
+    }
+
     // Picks up scrolling / theme changes between gestures without per-frame reads.
     this.refreshViewMetrics();
     const viewport = this.viewport();
 
-    if (this.interactionMode === 'arrow') {
+    if (gestureButton === 'primary' && this.interactionMode === 'arrow') {
       this.beginArrowGesture(event, viewport);
       return;
     }
 
-    const noteId = this.noteLayer.getNoteIdFromEventTarget(event.target);
+    const noteId =
+      gestureButton === 'primary' ? this.noteLayer.getNoteIdFromEventTarget(event.target) : null;
     if (noteId) {
       this.selectNote(noteId);
     }
     this.downPosition = [event.clientX, event.clientY];
     this.didMove = false;
+    this.gestureButton = gestureButton;
     const z = clampDisk(screenToDisk(event.clientX, event.clientY, viewport));
     this.dragStartPoint = applyTransform(invertTransform(this.view), z);
 
-    if (noteId) {
+    if (gestureButton === 'primary' && noteId) {
       this.pointerMode = 'pending-item';
       this.dragNoteId = noteId;
     } else {
@@ -741,6 +757,7 @@ export class HyperbolicCanvasController {
   }
 
   private resetDragState(): void {
+    this.gestureButton = null;
     this.dragStartPoint = null;
     this.dragNoteId = null;
     this.draggingNoteId = null;
@@ -933,11 +950,12 @@ export class HyperbolicCanvasController {
     if (endedPointerMode === 'arrow-draw') {
       this.finishArrowGesture();
       this.pointerMode = 'idle';
+      this.gestureButton = null;
       this.requestRender();
       return;
     }
 
-    if (!this.didMove) {
+    if (!this.didMove && this.gestureButton === 'primary') {
       if (this.pointerMode === 'pending-pan' && this.dragStartPoint) {
         if (this.interactionMode === 'pan' && this.navigateClickedArrow(event)) {
           this.resetDragState();
@@ -1172,6 +1190,7 @@ export class HyperbolicCanvasController {
   private beginArrowGesture(event: PointerEvent, viewport: Viewport): void {
     this.downPosition = [event.clientX, event.clientY];
     this.didMove = false;
+    this.gestureButton = 'primary';
 
     const snapped = this.world.grid.snapScreenPoint(
       event.clientX,
@@ -1604,3 +1623,13 @@ const isCanvasControlTarget = (target: Element | null): boolean =>
       ].join(', '),
     ),
   );
+
+const parseGestureButton = (event: PointerEvent): GestureButton | null => {
+  if (event.button === 0) {
+    return 'primary';
+  }
+  if (event.button === 1) {
+    return 'middle';
+  }
+  return null;
+};

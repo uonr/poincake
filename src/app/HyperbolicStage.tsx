@@ -39,6 +39,15 @@ import { CoordinateNotePreviewPopover } from './CoordinateNotePreviewPopover';
 import { ImageNoteToolbar } from './ImageNoteToolbar';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
 import { Tooltip } from './Tooltip';
+import { loadPersistedWorld, savePersistedWorld } from './worldStorage';
+
+// The app starts blank and persists the working document to localStorage. Flip
+// this on to instead populate a fresh canvas with the demo notes—useful for
+// screenshots and perf testing, but it has no bearing on a restored document.
+const SEED_DEMO_NOTES = false;
+
+// Coalesce the burst of change events from a drag/typing into one write.
+const SAVE_DEBOUNCE_MS = 600;
 
 export const HyperbolicStage = () => {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -80,9 +89,32 @@ export const HyperbolicStage = () => {
 
     const tiling = generateHyperbolicTiling();
     const grid = new AnchoredGrid(tiling);
-    const notes = seedNotes(tiling.coarseGridPoints, 700, {
-      maxInitialRadius: 0.92,
-    });
+    const notes = SEED_DEMO_NOTES
+      ? seedNotes(tiling.coarseGridPoints, 700, { maxInitialRadius: 0.92 })
+      : [];
+
+    let disposed = false;
+    let saveTimer: number | null = null;
+    const persist = (): void => {
+      if (saveTimer !== null) {
+        return;
+      }
+      saveTimer = window.setTimeout(() => {
+        saveTimer = null;
+        const current = controllerRef.current;
+        if (!current || disposed) {
+          return;
+        }
+        // Serialization is async (images), so the controller may move on before
+        // it resolves; the snapshot still reflects a real past state, which is
+        // acceptable for autosave, and the next change schedules another write.
+        current
+          .exportWorldFileText()
+          .then(savePersistedWorld)
+          .catch((error) => console.warn('Could not serialize the document.', error));
+      }, SAVE_DEBOUNCE_MS);
+    };
+
     const controller = new HyperbolicCanvasController({
       stage,
       canvas,
@@ -99,12 +131,24 @@ export const HyperbolicStage = () => {
       onZoomStateChange: setZoomState,
       onHistoryStateChange: setHistory,
       onNavigationHistoryStateChange: setNavigationHistory,
+      onChange: persist,
     });
     controllerRef.current = controller;
 
     controller.start();
 
+    const persisted = loadPersistedWorld();
+    if (persisted) {
+      controller
+        .importWorldFileText(persisted)
+        .catch((error) => console.warn('Could not restore the persisted document.', error));
+    }
+
     return () => {
+      disposed = true;
+      if (saveTimer !== null) {
+        window.clearTimeout(saveTimer);
+      }
       controller.dispose();
       controllerRef.current = null;
     };

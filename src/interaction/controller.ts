@@ -88,6 +88,9 @@ export type HyperbolicCanvasControllerOptions = Readonly<{
   onZoomStateChange?: (state: ZoomState) => void;
   onHistoryStateChange?: (state: HistoryState) => void;
   onNavigationHistoryStateChange?: (state: NavigationHistoryState) => void;
+  // Fired after any mutation to the persisted document (notes/arrows/charts), so
+  // the host can save it. View-only changes (pan/zoom/selection) do not fire it.
+  onChange?: () => void;
 }>;
 
 export type ZoomState = Readonly<{
@@ -473,6 +476,7 @@ export class HyperbolicCanvasController {
     this.emitHistoryState();
     this.emitNavigationHistoryState();
     this.requestRender();
+    this.options.onChange?.();
   }
 
   private initZoom(): void {
@@ -938,6 +942,7 @@ export class HyperbolicCanvasController {
     this.syncNotes();
     this.emitCoordinateTarget();
     this.emitCoordinateNotePreview();
+    this.options.onChange?.();
   }
 
   private afterHistoryChange(): void {
@@ -957,6 +962,7 @@ export class HyperbolicCanvasController {
     this.emitCoordinateNotePreview();
     this.emitHistoryState();
     this.requestRender();
+    this.options.onChange?.();
   }
 
   private selectedNote(): Note | null {

@@ -2,6 +2,7 @@ import { abs2 } from '../geometry/complex';
 import type { DiskPoint } from '../geometry/disk';
 import { applyTransform, type DiskTransform } from '../geometry/mobius';
 import { type Note, type NoteContent, noteColor } from '../model/note';
+import { parseExternalLink } from '../model/noteLink';
 import { projectDiskPoint, type Viewport } from './viewport';
 
 const SCALE_TEXT = 0.26;
@@ -203,6 +204,7 @@ const renderNoteContent = (
 ): void => {
   if (content.kind === 'image') {
     element.dataset.noteContentKind = 'image';
+    delete element.dataset.noteLink;
     element.title = content.alt;
     // null while the asset is still loading; a later sync fills in the src.
     const url = resolveAssetUrl(content.assetId);
@@ -238,6 +240,13 @@ const renderNoteContent = (
   const text = content.text;
   const isCoordinate = content.kind === 'coordinate-link';
   element.dataset.noteContentKind = isCoordinate ? 'coordinate' : 'text';
+  if (isCoordinate) {
+    delete element.dataset.noteLink;
+  } else if (parseExternalLink(text)) {
+    element.dataset.noteLink = 'external';
+  } else {
+    delete element.dataset.noteLink;
+  }
   element.title = isCoordinate ? text.trim() : '';
 
   if (isCoordinate) {

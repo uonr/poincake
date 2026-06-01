@@ -31,6 +31,46 @@ const PERSISTED_WORLD = JSON.stringify({
   },
 });
 
+const LINK_WORLD = JSON.stringify({
+  format: 'poincake-world',
+  version: 1,
+  exportedAt: '2026-06-01T00:00:00.000Z',
+  content: {
+    notes: [
+      {
+        id: 'note-link',
+        anchor: {
+          chartId: 'root',
+          walk: [],
+          local: { kind: 'edge', index: 1, subdivision: 4, subdivisions: 6 },
+        },
+        content: { kind: 'plain-text', text: 'https://example.com/path' },
+        appearance: { color: 'c2' },
+        createdAt: 1780272000000,
+        updatedAt: 1780272000000,
+      },
+      {
+        id: 'note-partial-link',
+        anchor: {
+          chartId: 'root',
+          walk: [0, 1],
+          local: { kind: 'edge', index: 2, subdivision: 2, subdivisions: 6 },
+        },
+        content: { kind: 'plain-text', text: 'see https://example.com/path' },
+        appearance: { color: 'c3' },
+        createdAt: 1780272000000,
+        updatedAt: 1780272000000,
+      },
+    ],
+    arrows: [],
+    charts: [
+      { id: 'root', parentId: null, transition: [] },
+      { id: 'chart-1', parentId: 'root', transition: [0, 2, 1, 0] },
+      { id: 'chart-2', parentId: 'chart-1', transition: [0, 1, 2, 0] },
+    ],
+  },
+});
+
 test('restores a persisted document without leaving a screen-fixed duplicate', async ({ page }) => {
   // Pre-seed the autosave slot so the app boots through the restore path rather
   // than starting blank.
@@ -51,6 +91,23 @@ test('restores a persisted document without leaving a screen-fixed duplicate', a
   await page.mouse.up();
 
   await expect(helloNotes).toHaveCount(1);
+});
+
+test('underlines notes that are exactly external links', async ({ page }) => {
+  await page.addInitScript((world) => {
+    window.localStorage.setItem('poincake:world', world);
+  }, LINK_WORLD);
+  await page.goto('/');
+
+  const linkNote = page.locator('[data-testid="note"][data-note-id="note-link"]');
+  await expect(linkNote).toBeVisible();
+  await expect(linkNote).toHaveAttribute('data-note-link', 'external');
+  await expect(linkNote).toHaveCSS('text-decoration-line', 'underline');
+  await linkNote.hover();
+  await expect(linkNote).toHaveCSS('text-decoration-line', 'underline');
+
+  const partialLinkNote = page.locator('[data-testid="note"][data-note-id="note-partial-link"]');
+  await expect(partialLinkNote).not.toHaveAttribute('data-note-link', 'external');
 });
 
 test('renders the hyperbolic canvas shell', async ({ page }) => {

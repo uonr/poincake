@@ -180,6 +180,17 @@ export const HyperbolicStage = () => {
     };
 
     const onKeyDown = (event: KeyboardEvent): void => {
+      const historyAction = historyActionForShortcut(event);
+      if (historyAction && !isEditableShortcutTarget(event.target)) {
+        event.preventDefault();
+        if (historyAction === 'undo') {
+          controllerRef.current?.undo();
+        } else {
+          controllerRef.current?.redo();
+        }
+        return;
+      }
+
       if (shouldIgnoreModeShortcut(event)) {
         return;
       }
@@ -325,7 +336,7 @@ export const HyperbolicStage = () => {
           <button
             type="button"
             aria-label="Undo"
-            title="Undo"
+            title="Undo (⌘Z / Ctrl+Z)"
             onClick={() => controllerRef.current?.undo()}
             disabled={!history.canUndo}
           >
@@ -334,7 +345,7 @@ export const HyperbolicStage = () => {
           <button
             type="button"
             aria-label="Redo"
-            title="Redo"
+            title="Redo (⌘⇧Z / Ctrl+Shift+Z)"
             onClick={() => controllerRef.current?.redo()}
             disabled={!history.canRedo}
           >
@@ -466,12 +477,31 @@ const modeForShortcut = (event: KeyboardEvent): InteractionMode | null => {
   return SHORTCUT_MODES[event.key.toLowerCase()] ?? null;
 };
 
+const historyActionForShortcut = (event: KeyboardEvent): 'undo' | 'redo' | null => {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return null;
+  }
+
+  const key = event.key.toLowerCase();
+  if (key === 'z') {
+    return event.shiftKey ? 'redo' : 'undo';
+  }
+  if (key === 'y' && event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    return 'redo';
+  }
+
+  return null;
+};
+
 const shouldIgnoreModeShortcut = (event: KeyboardEvent): boolean => {
   if (event.altKey || event.ctrlKey || event.metaKey) {
     return true;
   }
 
-  const target = event.target;
+  return isEditableShortcutTarget(event.target);
+};
+
+const isEditableShortcutTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
     return false;
   }

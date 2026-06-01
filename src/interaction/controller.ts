@@ -758,7 +758,7 @@ export class HyperbolicCanvasController {
     }
 
     const note = this.world.notes.find((candidate) => candidate.id === noteId);
-    if (!note || note.content.kind !== 'image') {
+    if (note?.content.kind !== 'image') {
       return;
     }
 
@@ -1436,8 +1436,7 @@ export class HyperbolicCanvasController {
     const note = this.selectedNote();
     const stageRect = this.stageRect;
     if (
-      !note ||
-      note.content.kind !== 'image' ||
+      note?.content.kind !== 'image' ||
       this.editingNoteId !== null ||
       this.pointerMode === 'item-drag' ||
       !stageRect

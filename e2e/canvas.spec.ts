@@ -219,7 +219,8 @@ test('edits the active note through the React overlay', async ({ page }) => {
 
   await expect(page.getByTestId('note-editor')).toBeVisible();
   await page.getByLabel('Note text').fill('Edited\nnote');
-  await page.getByRole('button', { name: 'Done' }).click();
+  const blank = await findBlankStagePoint(page);
+  await page.mouse.click(blank.x, blank.y);
 
   await expect(page.getByTestId('note-editor')).toBeHidden();
   const editedNote = page.getByTestId('note').filter({ hasText: 'Edited' });
@@ -270,7 +271,8 @@ test('previews the target note when hovering a coordinate note', async ({ page }
   await page.getByRole('button', { name: 'Text' }).click();
   await sourceNote.click();
   await page.getByLabel('Note text').fill(coordinate);
-  await page.getByRole('button', { name: 'Done' }).click();
+  const blank = await findBlankStagePoint(page);
+  await page.mouse.click(blank.x, blank.y);
 
   const coordinateNote = page.locator(`[data-testid="note"][data-note-id="${sourceNoteId}"]`);
   await expect(coordinateNote).toHaveAttribute('data-note-content-kind', 'coordinate');
@@ -328,7 +330,8 @@ test('creates a note from edit mode after distant panning', async ({ page }) => 
   await expect(page.getByTestId('note-editor')).toBeVisible();
   await expect(page.getByLabel('Note text')).toHaveValue('');
   await page.getByLabel('Note text').fill('Distant edit note');
-  await page.getByRole('button', { name: 'Done' }).click();
+  const blank = await findBlankStagePoint(page);
+  await page.mouse.click(blank.x, blank.y);
 
   await expect(page.getByTestId('note').filter({ hasText: 'Distant edit note' })).toBeVisible();
 });

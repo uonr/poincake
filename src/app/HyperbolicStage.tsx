@@ -30,7 +30,6 @@ import {
 import type { ArrowHeadMode } from '../model/arrow';
 import type { HistoryState } from '../model/history';
 import type { NoteColor } from '../model/note';
-import type { NoteDraft } from '../model/noteDraft';
 import { gzipText, readWorldFileText } from '../model/worldFileArchive';
 import { AppMenu } from './AppMenu';
 import { ArrowInspector } from './ArrowInspector';
@@ -166,10 +165,6 @@ export const HyperbolicStage = () => {
     };
   }, []);
 
-  const commitEditingDraft = (draft: NoteDraft): void => {
-    controllerRef.current?.commitEditingDraft(draft);
-  };
-
   const changeMode = (nextMode: InteractionMode): void => {
     temporaryPanModeRef.current = null;
     modeRef.current = nextMode;
@@ -298,8 +293,8 @@ export const HyperbolicStage = () => {
         <NoteEditorOverlay
           key={editingSession.noteId}
           session={editingSession}
-          onCommit={commitEditingDraft}
-          onCancel={() => controllerRef.current?.cancelEditing()}
+          onChange={(draft) => controllerRef.current?.updateEditingDraft(draft)}
+          onRollback={() => controllerRef.current?.rollbackEditing()}
           onDelete={() => controllerRef.current?.deleteEditingNote()}
         />
       ) : null}

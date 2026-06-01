@@ -1,4 +1,4 @@
-import { Check, Trash2, X } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { EditingSession } from '../core/editingSession';
 import type { NoteDraft } from '../model/noteDraft';
@@ -7,15 +7,15 @@ import { useCanvasFloatingPosition } from './useCanvasFloatingPosition';
 
 type NoteEditorOverlayProps = Readonly<{
   session: EditingSession;
-  onCommit: (draft: NoteDraft) => void;
-  onCancel: () => void;
+  onChange: (draft: NoteDraft) => void;
+  onRollback: () => void;
   onDelete: () => void;
 }>;
 
 export const NoteEditorOverlay = ({
   session,
-  onCommit,
-  onCancel,
+  onChange,
+  onRollback,
   onDelete,
 }: NoteEditorOverlayProps) => {
   const [draft, setDraft] = useState<NoteDraft>(session.draft);
@@ -32,15 +32,11 @@ export const NoteEditorOverlay = ({
   }, []);
 
   return (
-    <form
+    <div
       ref={floating.ref}
       className={`note-editor-overlay ${draft.color}`}
       data-testid="note-editor"
       style={floating.style}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onCommit(draft);
-      }}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <textarea
@@ -51,16 +47,16 @@ export const NoteEditorOverlay = ({
         rows={4}
         onChange={(event) => {
           const text = event.currentTarget.value;
-          setDraft((current) => ({ ...current, text }));
+          setDraft((current) => {
+            const next = { ...current, text };
+            onChange(next);
+            return next;
+          });
         }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault();
-            onCancel();
-          }
-          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            onCommit(draft);
+            onRollback();
           }
         }}
       />
@@ -69,7 +65,11 @@ export const NoteEditorOverlay = ({
           label="Note color"
           value={draft.color}
           onChange={(color) => {
-            setDraft((current) => ({ ...current, color }));
+            setDraft((current) => {
+              const next = { ...current, color };
+              onChange(next);
+              return next;
+            });
           }}
         />
         <div className="note-editor-actions">
@@ -77,16 +77,8 @@ export const NoteEditorOverlay = ({
             <Trash2 size={14} aria-hidden />
             Delete
           </button>
-          <button type="button" onClick={onCancel}>
-            <X size={14} aria-hidden />
-            Cancel
-          </button>
-          <button type="submit">
-            <Check size={14} aria-hidden />
-            Done
-          </button>
         </div>
       </div>
-    </form>
+    </div>
   );
 };

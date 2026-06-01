@@ -17,18 +17,25 @@ import type { AnchoredGrid } from '../grid/anchoredGrid';
 import { type GridAnchor, gridAnchorsEqual } from '../grid/tilingAddress';
 import type { Arrow, ArrowHeadMode } from '../model/arrow';
 import { AssetStore } from '../model/assetStore';
-import { applyWorldCommand, type NoteMoveSnapshot, type WorldCommand } from '../model/commands';
+import {
+  applyWorldCommand,
+  type NoteMoveSnapshot,
+  type NoteUpdateSnapshot,
+  type WorldCommand,
+} from '../model/commands';
 import { type HistoryState, WorldHistory } from '../model/history';
 import {
   type Note,
+  type NoteAppearance,
   type NoteColor,
+  type NoteContent,
   type NoteId,
   noteColor,
   noteCoordinateTarget,
   noteDisplayText,
   noteIsTextEditable,
 } from '../model/note';
-import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
+import { NOTE_COLORS, type NoteDraft, parseNoteContent } from '../model/noteDraft';
 import { parseExternalLink } from '../model/noteLink';
 import { parseWorldFileText, stringifyWorldFile, type WorldFileContent } from '../model/worldFile';
 import { HyperbolicWorldState } from '../model/worldState';
@@ -150,6 +157,7 @@ export class HyperbolicCanvasController {
   private dragMoveBefore: NoteMoveSnapshot | null = null;
   private editingNoteId: string | null = null;
   private editingVisible = false;
+  private editingBefore: NoteUpdateSnapshot | null = null;
   private pendingNoteId: string | null = null;
   private nextNoteId: number;
   private nextArrowId = 0;
@@ -237,43 +245,65 @@ export class HyperbolicCanvasController {
     this.started = false;
   }
 
-  commitEditingDraft(draft: NoteDraft): void {
+  updateEditingDraft(draft: NoteDraft): void {
+    const note = this.editingNote();
+    if (!note) {
+      return;
+    }
+
+    const parsed = parseLiveNoteDraft(draft);
+    if (!parsed) {
+      return;
+    }
+
+    this.applyCommand(
+      {
+        type: 'update-note',
+        noteId: note.id,
+        content: parsed.content,
+        appearance: parsed.appearance,
+        updatedAt: Date.now(),
+      },
+      { recordHistory: false },
+    );
+  }
+
+  closeEditing(): void {
     if (!this.editingNoteId) {
       return;
     }
 
-    const isPending = this.editingNoteId === this.pendingNoteId;
-
-    const parsed = parseNoteDraft(draft);
-    if (!parsed.ok) {
-      if (isPending) {
-        this.discardPendingNote();
-        this.finishEditingSession();
-      }
-      return;
-    }
-
-    if (isPending) {
-      this.commitPendingNote(parsed.value);
+    if (this.editingNoteId === this.pendingNoteId) {
+      this.closePendingNote();
     } else {
-      this.applyCommand({
-        type: 'update-note',
-        noteId: this.editingNoteId,
-        content: parsed.value.content,
-        appearance: parsed.value.appearance,
-        updatedAt: Date.now(),
-      });
+      this.recordFinishedEdit();
     }
     this.finishEditingSession();
   }
 
-  cancelEditing(): void {
+  rollbackEditing(): void {
     if (!this.editingNoteId) {
       return;
     }
 
     if (this.editingNoteId === this.pendingNoteId) {
       this.discardPendingNote();
+      this.finishEditingSession();
+      return;
+    }
+
+    const before = this.editingBefore;
+    if (before) {
+      this.applyCommand(
+        {
+          type: 'update-note',
+          noteId: this.editingNoteId,
+          content: before.content,
+          appearance: before.appearance,
+          updatedAt: before.updatedAt,
+        },
+        { recordHistory: false },
+      );
     }
     this.finishEditingSession();
   }
@@ -379,7 +409,7 @@ export class HyperbolicCanvasController {
 
   setInteractionMode(mode: InteractionMode): void {
     if (this.editingNoteId) {
-      this.cancelEditing();
+      this.closeEditing();
     }
 
     this.cancelArrowGesture();
@@ -390,7 +420,7 @@ export class HyperbolicCanvasController {
 
   private dismissFloatingUi(): void {
     if (this.editingNoteId) {
-      this.cancelEditing();
+      this.closeEditing();
     }
 
     this.cancelArrowGesture();
@@ -413,7 +443,7 @@ export class HyperbolicCanvasController {
 
   resetView(): void {
     if (this.editingNoteId) {
-      this.cancelEditing();
+      this.closeEditing();
     }
 
     this.flyTo(this.world.home, { recordNavigation: true });
@@ -478,7 +508,7 @@ export class HyperbolicCanvasController {
     options: Readonly<{ resetZoom?: boolean }> = {},
   ): void {
     if (this.editingNoteId) {
-      this.cancelEditing();
+      this.closeEditing();
     }
 
     this.cancelFly(false);
@@ -506,6 +536,7 @@ export class HyperbolicCanvasController {
     this.dragMoveBefore = null;
     this.editingNoteId = null;
     this.editingVisible = false;
+    this.editingBefore = null;
     this.pendingNoteId = null;
     this.arrowFrom = null;
     this.draftArrowTo = null;
@@ -660,7 +691,7 @@ export class HyperbolicCanvasController {
     this.requestRender();
 
     if (this.pointerMode === 'editing') {
-      this.cancelEditing();
+      this.closeEditing();
       event.preventDefault();
       if (gestureButton === 'primary') {
         return;
@@ -1359,24 +1390,59 @@ export class HyperbolicCanvasController {
     return true;
   }
 
-  private commitPendingNote(parsed: ParsedNoteDraft): void {
+  private closePendingNote(): void {
     const noteId = this.pendingNoteId;
-    this.pendingNoteId = null;
     if (!noteId) {
       return;
     }
 
     const note = this.world.notes.find((candidate) => candidate.id === noteId);
     if (!note) {
+      this.pendingNoteId = null;
       return;
     }
 
-    note.content = parsed.content;
-    note.appearance = parsed.appearance;
-    note.updatedAt = Date.now();
+    if (noteDisplayText(note).trim().length === 0) {
+      this.discardPendingNote();
+      return;
+    }
 
+    this.pendingNoteId = null;
     this.applyCommand({ type: 'delete-note', noteId }, { recordHistory: false });
     this.applyCommand({ type: 'create-note', note });
+  }
+
+  private recordFinishedEdit(): void {
+    const note = this.editingNote();
+    const before = this.editingBefore;
+    if (!note || !before) {
+      return;
+    }
+
+    const after: NoteUpdateSnapshot = {
+      content: note.content,
+      appearance: note.appearance,
+      updatedAt: note.updatedAt,
+    };
+    if (noteUpdateSnapshotsEqual(before, after)) {
+      return;
+    }
+
+    this.history.record({
+      type: 'update-note',
+      noteId: note.id,
+      before,
+      after,
+    });
+    this.emitHistoryState();
+  }
+
+  private editingNote(): Note | null {
+    if (!this.editingNoteId) {
+      return null;
+    }
+
+    return this.world.notes.find((candidate) => candidate.id === this.editingNoteId) ?? null;
   }
 
   private discardPendingNote(): void {
@@ -1403,6 +1469,11 @@ export class HyperbolicCanvasController {
     this.pointerMode = 'editing';
     this.editingNoteId = note.id;
     this.editingVisible = false;
+    this.editingBefore = {
+      content: note.content,
+      appearance: note.appearance,
+      updatedAt: note.updatedAt,
+    };
     this.options.onEditingSessionChange?.(null);
     this.emitSelection();
     this.flyTo(this.notePoint(note), {
@@ -1424,6 +1495,7 @@ export class HyperbolicCanvasController {
     }
     this.editingNoteId = null;
     this.editingVisible = false;
+    this.editingBefore = null;
     this.pointerMode = 'idle';
     this.options.onEditingSessionChange?.(null);
     this.emitSelection();
@@ -2016,6 +2088,44 @@ const nextNumericId = (items: readonly { id: string }[], prefix: string): number
     const value = pattern.exec(item.id)?.[1];
     return value === undefined ? next : Math.max(next, Number(value) + 1);
   }, 0);
+};
+
+const parseLiveNoteDraft = (
+  draft: NoteDraft,
+): Readonly<{ content: NoteContent; appearance: NoteAppearance }> | null => {
+  if (!NOTE_COLORS.includes(draft.color)) {
+    return null;
+  }
+
+  const text = draft.text.trim();
+  return {
+    content: text.length > 0 ? parseNoteContent(text) : { kind: 'plain-text', text: '' },
+    appearance: {
+      color: draft.color,
+    },
+  };
+};
+
+const noteUpdateSnapshotsEqual = (a: NoteUpdateSnapshot, b: NoteUpdateSnapshot): boolean =>
+  noteContentEqual(a.content, b.content) && a.appearance.color === b.appearance.color;
+
+const noteContentEqual = (a: NoteContent, b: NoteContent): boolean => {
+  if (a.kind !== b.kind) {
+    return false;
+  }
+
+  switch (a.kind) {
+    case 'plain-text':
+      return a.text === (b as typeof a).text;
+    case 'coordinate-link': {
+      const other = b as typeof a;
+      return a.text === other.text && gridAnchorsEqual(a.target, other.target);
+    }
+    case 'image': {
+      const other = b as typeof a;
+      return a.assetId === other.assetId && a.alt === other.alt && a.mimeType === other.mimeType;
+    }
+  }
 };
 
 const isCanvasControlTarget = (target: Element | null): boolean =>

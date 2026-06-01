@@ -30,7 +30,7 @@ import {
 } from '../model/note';
 import { type NoteDraft, type ParsedNoteDraft, parseNoteDraft } from '../model/noteDraft';
 import { parseExternalLink } from '../model/noteLink';
-import { parseWorldFileText, stringifyWorldFile } from '../model/worldFile';
+import { parseWorldFileText, stringifyWorldFile, type WorldFileContent } from '../model/worldFile';
 import { HyperbolicWorldState } from '../model/worldState';
 import { type ArrowGeometry, arrowHitTest, arrowMidpoint } from '../render/arrowGeometry';
 import { type ArrowDraft, ArrowLayer, type RenderedArrow } from '../render/arrowLayer';
@@ -408,6 +408,17 @@ export class HyperbolicCanvasController {
     this.flyTo(this.world.home, { recordNavigation: true });
   }
 
+  newDocument(): void {
+    this.replaceDocument(
+      {
+        notes: [],
+        arrows: [],
+        charts: [],
+      },
+      { resetZoom: true },
+    );
+  }
+
   goBack(): void {
     // Settle any in-flight fly first so the recorded forward entry is the real
     // prior location rather than a mid-animation point.
@@ -446,10 +457,18 @@ export class HyperbolicCanvasController {
       return;
     }
 
+    this.replaceDocument(content);
+  }
+
+  private replaceDocument(
+    content: WorldFileContent,
+    options: Readonly<{ resetZoom?: boolean }> = {},
+  ): void {
     if (this.editingNoteId) {
       this.cancelEditing();
     }
 
+    this.cancelFly(false);
     this.cancelArrowGesture();
     this.options.stage.classList.remove('dragging', 'item-drag', 'near-snap');
     this.world.grid.restoreChartSnapshots(content.charts);
@@ -482,10 +501,14 @@ export class HyperbolicCanvasController {
     this.hoveredArrowId = null;
     this.nextNoteId = nextNumericId(content.notes, 'note');
     this.nextArrowId = nextNumericId(content.arrows, 'arrow');
+    if (options.resetZoom) {
+      this.initZoom();
+    }
 
     this.syncNotes();
     this.options.onEditingSessionChange?.(null);
     this.options.onArrowSelectionChange?.(null);
+    this.options.onSelectedImageChange?.(null);
     this.emitSelection();
     this.emitCoordinateTarget();
     this.emitCoordinateNotePreview();

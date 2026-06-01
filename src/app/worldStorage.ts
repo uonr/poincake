@@ -26,3 +26,11 @@ export const savePersistedWorld = (text: string): void => {
     console.warn('Could not persist the document.', error);
   }
 };
+
+export const clearPersistedWorld = (): void => {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    console.warn('Could not clear the persisted document.', error);
+  }
+};

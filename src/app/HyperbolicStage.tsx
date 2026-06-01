@@ -39,7 +39,7 @@ import { CoordinateNotePreviewPopover } from './CoordinateNotePreviewPopover';
 import { ImageNoteToolbar } from './ImageNoteToolbar';
 import { NoteEditorOverlay } from './NoteEditorOverlay';
 import { Tooltip } from './Tooltip';
-import { loadPersistedWorld, savePersistedWorld } from './worldStorage';
+import { clearPersistedWorld, loadPersistedWorld, savePersistedWorld } from './worldStorage';
 
 // The app starts blank and persists the working document to localStorage. Flip
 // this on (or load with `?demo`) to instead populate a fresh canvas with the
@@ -274,6 +274,22 @@ export const HyperbolicStage = () => {
     }
   };
 
+  const newContent = async (): Promise<void> => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      return;
+    }
+
+    clearPersistedWorld();
+    controller.newDocument();
+    changeMode('pan');
+    try {
+      savePersistedWorld(await controller.exportWorldFileText());
+    } catch (error) {
+      console.warn('Could not persist the new document.', error);
+    }
+  };
+
   return (
     <div id="stage" className={`mode-${mode}`} ref={stageRef}>
       <canvas id="grid" ref={canvasRef} />
@@ -309,7 +325,7 @@ export const HyperbolicStage = () => {
       ) : null}
       <CoordinateIndicator target={coordinateTarget} />
       <div className="top-left-controls">
-        <AppMenu onExport={exportContent} onImport={importContent} />
+        <AppMenu onNew={newContent} onExport={exportContent} onImport={importContent} />
         <div className="history-controls" data-testid="history-controls">
           <button
             type="button"

@@ -1,15 +1,16 @@
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react';
-import { Download, Menu, Upload } from 'lucide-react';
+import { Download, Menu, Plus, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 const SOURCE_URL = 'https://github.com/uonr/poincake';
 
 type AppMenuProps = Readonly<{
+  onNew: () => void;
   onExport: () => void;
   onImport: (file: File) => void;
 }>;
 
-export const AppMenu = ({ onExport, onImport }: AppMenuProps) => {
+export const AppMenu = ({ onNew, onExport, onImport }: AppMenuProps) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +50,11 @@ export const AppMenu = ({ onExport, onImport }: AppMenuProps) => {
     setOpen(false);
   };
 
+  const newContent = (): void => {
+    onNew();
+    setOpen(false);
+  };
+
   const openImportPicker = (): void => {
     if (importInputRef.current) {
       importInputRef.current.value = '';
@@ -85,6 +91,10 @@ export const AppMenu = ({ onExport, onImport }: AppMenuProps) => {
       </button>
       {open ? (
         <div className="app-menu-popover" ref={refs.setFloating} role="menu" style={floatingStyles}>
+          <button className="app-menu-item" type="button" role="menuitem" onClick={newContent}>
+            <Plus size={14} aria-hidden />
+            New
+          </button>
           <button className="app-menu-item" type="button" role="menuitem" onClick={exportContent}>
             <Download size={14} aria-hidden />
             Export

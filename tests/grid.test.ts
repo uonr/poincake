@@ -90,7 +90,7 @@ describe('hyperbolic tiling', () => {
     expect(tiling.coarseGridPoints.some((gp) => abs2(gp.point) > 0.9 * 0.9)).toBe(true);
   });
 
-  it('keeps enough visible snap points for the initial demo view', () => {
+  it('keeps enough visible snap points for the initial view', () => {
     const tiling = generateHyperbolicTiling();
     const initialViewPoints = tiling.coarseGridPoints.filter((gp) => abs2(gp.point) <= 0.92 * 0.92);
 

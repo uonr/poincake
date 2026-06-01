@@ -16,7 +16,6 @@ import type { ArrowSelection } from '../core/arrowSelection';
 import type { CoordinateTarget } from '../core/coordinateIndicator';
 import type { EditingSession } from '../core/editingSession';
 import { emptySelectionState, type SelectionState } from '../core/selectionState';
-import { seedNotes } from '../demo/seedNotes';
 import { AnchoredGrid } from '../grid/anchoredGrid';
 import { generateHyperbolicTiling } from '../grid/hyperbolicTiling';
 import {
@@ -40,25 +39,8 @@ import { NoteEditorOverlay } from './NoteEditorOverlay';
 import { Tooltip } from './Tooltip';
 import { clearPersistedWorld, loadPersistedWorld, savePersistedWorld } from './worldStorage';
 
-// The app starts blank and persists the working document to localStorage. Flip
-// this on (or load with `?demo`) to instead populate a fresh canvas with the
-// demo notes—useful for screenshots, perf testing, and e2e specs—but it only
-// applies when there's nothing persisted to restore.
-const SEED_DEMO_NOTES = false;
-
 // Coalesce the burst of change events from a drag/typing into one write.
 const SAVE_DEBOUNCE_MS = 600;
-
-const shouldSeedDemoNotes = (): boolean => {
-  if (SEED_DEMO_NOTES) {
-    return true;
-  }
-  try {
-    return new URLSearchParams(window.location.search).has('demo');
-  } catch {
-    return false;
-  }
-};
 
 export const HyperbolicStage = () => {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -100,9 +82,6 @@ export const HyperbolicStage = () => {
 
     const tiling = generateHyperbolicTiling();
     const grid = new AnchoredGrid(tiling);
-    const notes = shouldSeedDemoNotes()
-      ? seedNotes(tiling.coarseGridPoints, 700, { maxInitialRadius: 0.92 })
-      : [];
 
     let disposed = false;
     let saveTimer: number | null = null;
@@ -130,7 +109,7 @@ export const HyperbolicStage = () => {
       stage,
       canvas,
       arrowCanvas,
-      notes,
+      notes: [],
       grid,
       initialMode: 'pan',
       onEditingSessionChange: setEditingSession,
@@ -153,6 +132,16 @@ export const HyperbolicStage = () => {
       controller
         .importWorldFileText(persisted)
         .catch((error) => console.warn('Could not restore the persisted document.', error));
+    } else {
+      fetch(`${import.meta.env.BASE_URL}defaultWorld.json`)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Default document request failed: ${response.status}`);
+          }
+          return response.text();
+        })
+        .then((text) => controller.importWorldFileText(text))
+        .catch((error) => console.warn('Could not load the default document.', error));
     }
 
     return () => {

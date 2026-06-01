@@ -111,7 +111,7 @@ test('underlines notes that are exactly external links', async ({ page }) => {
 });
 
 test('renders the hyperbolic canvas shell', async ({ page }) => {
-  await page.goto('/?demo');
+  await page.goto('/');
 
   await expect(page.locator('#stage')).toBeVisible();
   await expect(page.getByTestId('note').first()).toBeVisible();
@@ -133,7 +133,7 @@ test('zooms with the wheel over blank canvas space', async ({ page }) => {
 });
 
 test('pans with the middle mouse button in non-navigation modes', async ({ page }) => {
-  await page.goto('/?demo');
+  await page.goto('/');
 
   for (const mode of ['Text', 'Move', 'Arrow']) {
     await page.getByRole('button', { name: mode }).click();
@@ -212,10 +212,10 @@ test('switches modes with keyboard shortcuts', async ({ page }) => {
 });
 
 test('edits the active note through the React overlay', async ({ page }) => {
-  await page.goto('/?demo');
+  await page.goto('/');
 
   await page.getByRole('button', { name: 'Text' }).click();
-  await page.getByTestId('note').and(page.locator('[data-note-render="text"]')).last().click();
+  await page.locator('[data-testid="note"][data-note-id="note-0"]').click();
 
   await expect(page.getByTestId('note-editor')).toBeVisible();
   await page.getByLabel('Note text').fill('Edited\nnote');
@@ -229,9 +229,9 @@ test('edits the active note through the React overlay', async ({ page }) => {
 
 test('copies the selected note coordinate from the indicator', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.goto('/?demo');
+  await page.goto('/');
 
-  await page.getByTestId('note').and(page.locator('[data-note-render="text"]')).last().click();
+  await page.locator('[data-testid="note"][data-note-id="note-0"]').click();
 
   const indicator = page.getByTestId('coordinate-indicator');
   await expect(indicator).toBeEnabled();
@@ -247,7 +247,7 @@ test('copies the selected note coordinate from the indicator', async ({ page, co
 });
 
 test('previews the target note when hovering a coordinate note', async ({ page }) => {
-  await page.goto('/?demo');
+  await page.goto('/');
 
   const textNotes = page.getByTestId('note').and(page.locator('[data-note-render="text"]'));
   const targetNote = textNotes.first();

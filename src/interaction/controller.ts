@@ -1689,6 +1689,7 @@ export class HyperbolicCanvasController {
       appearance: { ...arrow.appearance, color },
       updatedAt: Date.now(),
     });
+    this.emitArrowSelection(this.viewport());
     this.requestRender();
   }
 
@@ -1704,6 +1705,7 @@ export class HyperbolicCanvasController {
       appearance: { ...arrow.appearance, headMode },
       updatedAt: Date.now(),
     });
+    this.emitArrowSelection(this.viewport());
     this.requestRender();
   }
 
@@ -1719,6 +1721,7 @@ export class HyperbolicCanvasController {
       appearance: arrow.appearance,
       updatedAt: Date.now(),
     });
+    this.emitArrowSelection(this.viewport());
     this.requestRender();
   }
 

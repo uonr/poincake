@@ -623,7 +623,7 @@ body {
   color: var(--text);
 }
 
-.arrow-inspector-tools button {
+.arrow-inspector-tools > button {
   align-items: center;
   background: transparent;
   border: 0.5px solid var(--border);
@@ -633,11 +633,11 @@ body {
   padding: 5px 7px;
 }
 
-.arrow-inspector-tools button:hover {
+.arrow-inspector-tools > button:hover {
   background: var(--surface);
 }
 
-.arrow-inspector-tools button.danger {
+.arrow-inspector-tools > button.danger {
   color: #a43737;
 }
 

@@ -5,6 +5,7 @@ import {
   LocateFixed,
   Move,
   Redo2,
+  Sparkles,
   Spline,
   Type,
   Undo2,
@@ -70,6 +71,7 @@ export const HyperbolicStage = () => {
     zoom: 0.5,
     minZoom: 0.5,
   });
+  const [deoverlap, setDeoverlap] = useState(false);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -414,6 +416,22 @@ export const HyperbolicStage = () => {
           onChange={(event) => changeZoom(Number.parseFloat(event.currentTarget.value))}
         />
         <span id="zoom-val">{zoomState.zoom.toFixed(2)}x</span>
+        <Tooltip label="Spin the disk to separate overlapping labels when the view rests">
+          <button
+            id="deoverlap"
+            type="button"
+            aria-pressed={deoverlap}
+            className={deoverlap ? 'active' : undefined}
+            onClick={() => {
+              const next = !deoverlap;
+              setDeoverlap(next);
+              controllerRef.current?.setDeoverlapEnabled(next);
+            }}
+          >
+            <Sparkles size={14} aria-hidden />
+            Untangle
+          </button>
+        </Tooltip>
         <button id="reset" type="button" onClick={() => controllerRef.current?.resetView()}>
           <LocateFixed size={14} aria-hidden />
           Origin

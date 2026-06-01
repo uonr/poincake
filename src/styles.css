@@ -824,7 +824,9 @@ body {
   max-width: min(240px, calc(100vw - 24px));
   padding: 5px 8px;
   pointer-events: none;
-  white-space: nowrap;
+  /* Short labels stay on one line; long ones wrap at max-width instead of
+     overflowing the bubble. */
+  white-space: normal;
   z-index: 20;
 }
 
@@ -918,6 +920,12 @@ body {
 
 .zoom-control button:active {
   transform: scale(0.98);
+}
+
+.zoom-control button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface-elevated);
 }
 
 .coordinate-indicator {

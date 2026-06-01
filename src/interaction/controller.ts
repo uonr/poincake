@@ -11,6 +11,7 @@ import {
   type DiskTransform,
   identityTransform,
   invertTransform,
+  rotationTransform,
   transformFromPointPair,
 } from '../geometry/mobius';
 import type { AnchoredGrid } from '../grid/anchoredGrid';
@@ -41,6 +42,7 @@ import { parseWorldFileText, stringifyWorldFile, type WorldFileContent } from '.
 import { HyperbolicWorldState } from '../model/worldState';
 import { type ArrowGeometry, arrowHitTest, arrowMidpoint } from '../render/arrowGeometry';
 import { type ArrowDraft, ArrowLayer, type RenderedArrow } from '../render/arrowLayer';
+import { type DeoverlapNode, findBestRotation } from '../render/deoverlap';
 import { GridRenderer } from '../render/gridRenderer';
 import { NoteLayer, type RenderedNote } from '../render/noteLayer';
 import {
@@ -67,6 +69,12 @@ type GestureButton = 'primary' | 'middle';
 const ARROW_DEFAULT_COLOR: NoteColor = 'c1';
 const MAX_ZOOM = 6;
 const WHEEL_ZOOM_STEP = 600;
+// Auto-deoverlap tuning. The view must rest this long before we evaluate, the
+// corrective spin runs for this long, and a best angle below the threshold is
+// treated as "good enough" and skipped to avoid fidgety micro-rotations.
+const DEOVERLAP_REST_MS = 400;
+const DEOVERLAP_SPIN_MS = 500;
+const DEOVERLAP_MIN_ANGLE = 0.05;
 
 type AnchoredPoint = Readonly<{
   anchor: GridAnchor;
@@ -174,6 +182,12 @@ export class HyperbolicCanvasController {
   // can be settled (rather than dropped) when another navigation interrupts it.
   private flySettle: (() => void) | null = null;
   private rafId: number | null = null;
+  // Auto-deoverlap: debounce timer fired after the view comes to rest, plus the
+  // RAF id of an in-flight spin so a new gesture can cancel it. Off by default;
+  // toggled from the UI.
+  private deoverlapEnabled = false;
+  private deoverlapTimer: ReturnType<typeof setTimeout> | null = null;
+  private rotateRafId: number | null = null;
   private started = false;
   // Once disposed the instance is inert: async work that resolves later (image
   // hydration, world import) must not touch the DOM, or—under StrictMode's
@@ -228,6 +242,7 @@ export class HyperbolicCanvasController {
       this.rafId = null;
     }
     this.cancelFly(false);
+    this.cancelDeoverlap();
 
     while (this.disposers.length > 0) {
       this.disposers.pop()?.();
@@ -439,6 +454,8 @@ export class HyperbolicCanvasController {
     this.zoom = this.clampZoom(zoom);
     this.emitZoomState();
     this.requestRender();
+    // Debounced, so a wheel burst only evaluates once the zoom settles.
+    this.scheduleDeoverlap();
   }
 
   resetView(): void {
@@ -447,6 +464,21 @@ export class HyperbolicCanvasController {
     }
 
     this.flyTo(this.world.home, { recordNavigation: true });
+  }
+
+  // Turn the rest-triggered auto-deoverlap spin on or off. Enabling runs one pass
+  // immediately so the current view is tidied without waiting for the next
+  // gesture; disabling drops any queued or in-flight spin.
+  setDeoverlapEnabled(enabled: boolean): void {
+    if (this.deoverlapEnabled === enabled) {
+      return;
+    }
+    this.deoverlapEnabled = enabled;
+    if (enabled) {
+      this.scheduleDeoverlap();
+    } else {
+      this.cancelDeoverlap();
+    }
   }
 
   newDocument(): void {
@@ -685,6 +717,9 @@ export class HyperbolicCanvasController {
     if (!gestureButton) {
       return;
     }
+    // A new gesture takes over: drop any queued or in-flight auto-deoverlap spin
+    // so the disk never moves on its own while the user is interacting.
+    this.cancelDeoverlap();
     this.hoveredNoteId = null;
     this.hoveredArrowId = null;
     this.emitCoordinateNotePreview();
@@ -1327,6 +1362,8 @@ export class HyperbolicCanvasController {
     this.pointerMode = 'idle';
     this.resetDragState();
     this.requestRender();
+    // The view just came to rest after a pan; consider de-overlapping labels.
+    this.scheduleDeoverlap();
   }
 
   private navigateClickedArrow(event: PointerEvent | undefined): boolean {
@@ -1823,6 +1860,106 @@ export class HyperbolicCanvasController {
     return note;
   }
 
+  // Queue an auto-deoverlap pass once the view has come to rest. Debounced so a
+  // burst of gestures (pan → zoom → pan) only evaluates after the user settles,
+  // and silently a no-op while editing or mid-animation.
+  private scheduleDeoverlap(): void {
+    this.cancelDeoverlap();
+    if (this.disposed || this.editingNoteId || !this.deoverlapEnabled) {
+      return;
+    }
+    this.deoverlapTimer = setTimeout(() => {
+      this.deoverlapTimer = null;
+      this.runDeoverlap();
+    }, DEOVERLAP_REST_MS);
+  }
+
+  private cancelDeoverlap(): void {
+    if (this.deoverlapTimer !== null) {
+      clearTimeout(this.deoverlapTimer);
+      this.deoverlapTimer = null;
+    }
+    if (this.rotateRafId !== null) {
+      cancelAnimationFrame(this.rotateRafId);
+      this.rotateRafId = null;
+    }
+  }
+
+  // Look at the labels visible right now; if any overlap, spin the whole disk to
+  // the nearby angle that minimizes overlap. Rotation about the center is an
+  // isometry, so note positions and sizes are untouched—only the spin slides
+  // labels off each other.
+  private runDeoverlap(): void {
+    if (this.disposed || this.flying || this.editingNoteId || this.pointerMode !== 'idle') {
+      return;
+    }
+
+    const nodes = this.collectDeoverlapNodes();
+    if (nodes.length < 2) {
+      return;
+    }
+
+    const best = findBestRotation(nodes, this.view, this.viewport());
+    // Ignore negligible angles and improvements: a tiny spin that barely helps is
+    // more distracting than the overlap it fixes.
+    if (Math.abs(best.angle) < DEOVERLAP_MIN_ANGLE) {
+      return;
+    }
+    this.animateRotation(best.angle);
+  }
+
+  // Gather the on-disk footprint of every note currently painted as full-size
+  // text. width/height are the element's intrinsic (unscaled) box; the searcher
+  // applies each candidate view's scale itself.
+  private collectDeoverlapNodes(): DeoverlapNode[] {
+    const nodes: DeoverlapNode[] = [];
+    for (const note of this.world.notes) {
+      if (note.id === this.editingNoteId) {
+        continue;
+      }
+      const element = this.noteLayer.getElement(note.id);
+      // Only labels the renderer drew as text contribute to overlap; dots and
+      // edge markers are small and already de-duplicated.
+      if (element?.dataset.noteRender !== 'text') {
+        continue;
+      }
+      // offsetWidth is the post-transform-independent box (transform: scale does
+      // not affect it), so it is the intrinsic size the searcher needs.
+      const width = element.offsetWidth;
+      const height = element.offsetHeight;
+      if (width === 0 || height === 0) {
+        continue;
+      }
+      nodes.push({ point: this.notePoint(note), width, height });
+    }
+    return nodes;
+  }
+
+  // Spin the disk about its center by `angle` radians, easing like flyTo.
+  private animateRotation(angle: number): void {
+    const startView = this.view;
+    const startTime = performance.now();
+    const ms = DEOVERLAP_SPIN_MS;
+
+    const step = (): void => {
+      if (this.disposed) {
+        this.rotateRafId = null;
+        return;
+      }
+      const t = Math.min(1, (performance.now() - startTime) / ms);
+      const eased = 1 - (1 - t) ** 3;
+      this.view = composeTransforms(rotationTransform(angle * eased), startView);
+      this.render();
+      if (t >= 1) {
+        this.rotateRafId = null;
+        return;
+      }
+      this.rotateRafId = requestAnimationFrame(step);
+    };
+
+    this.rotateRafId = requestAnimationFrame(step);
+  }
+
   private flyTo(target: DiskPoint, options: FlyToOptions = {}): void {
     // Interrupt and settle any in-flight fly so this navigation takes over from
     // the prior destination instead of being dropped.
@@ -1854,6 +1991,7 @@ export class HyperbolicCanvasController {
       this.reanchorIfNeeded();
       this.render();
       options.onDone?.();
+      this.scheduleDeoverlap();
     };
     this.flySettle = settle;
 

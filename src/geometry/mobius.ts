@@ -27,6 +27,14 @@ export const invertTransform = (transform: DiskTransform): DiskTransform => ({
   b: negate(transform.b),
 });
 
+// A pure rotation about the disk center by `angle` radians. This is a hyperbolic
+// isometry: it preserves every pairwise distance and node size, so the layout is
+// unchanged—only the whole disk spins, which can slide overlapping labels apart.
+export const rotationTransform = (angle: number): DiskTransform => ({
+  a: [Math.cos(angle), Math.sin(angle)],
+  b: [0, 0],
+});
+
 export const transformFromPointPair = (p: DiskPoint, q: DiskPoint): DiskTransform => {
   assertInsideUnitDisk(p, 'Transform source point');
   assertInsideUnitDisk(q, 'Transform target point');

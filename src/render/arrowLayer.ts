@@ -3,12 +3,7 @@ import type { DiskTransform } from '../geometry/mobius';
 import type { Arrow, ArrowHeadMode } from '../model/arrow';
 import { arrowColor, arrowHeadMode, arrowLabel } from '../model/arrow';
 import type { NoteColor } from '../model/note';
-import {
-  collapsedArrowDot,
-  type GeodesicSample,
-  polylineMidpoint,
-  projectArrowGeodesic,
-} from './arrowGeometry';
+import { collapsedArrowDot, type GeodesicSample, projectArrowGeodesic } from './arrowGeometry';
 import type { ProjectedPoint, Viewport } from './viewport';
 
 const LINE_WIDTH = 2;
@@ -19,7 +14,9 @@ const HEAD_LENGTH = 12;
 const HEAD_HALF_ANGLE = 0.42;
 const DOT_RADIUS = 3;
 const DOT_OPACITY = 0.72;
-const LABEL_FONT = '500 13px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const LABEL_TEXT_SCALE = 0.26;
+const LABEL_FONT_SIZE = 16;
+const LABEL_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
 const LABEL_PADDING_X = 6;
 const LABEL_PADDING_Y = 3;
 const LABEL_RADIUS = 5;
@@ -103,8 +100,9 @@ export class ArrowLayer {
         selected: arrow.id === options.selectedArrowId,
       });
       const label = arrowLabel(arrow);
-      if (label) {
-        this.drawLabel(polylineMidpoint(points), label, color, options.labelHalo);
+      const labelPoint = points[Math.floor(points.length / 2)];
+      if (label && labelPoint) {
+        this.drawLabel(labelPoint, label, color, options.labelHalo, viewport);
       }
     }
 
@@ -245,23 +243,37 @@ export class ArrowLayer {
     }
   }
 
-  private drawLabel(at: ProjectedPoint, text: string, color: string, halo: string): void {
+  private drawLabel(
+    at: GeodesicSample,
+    text: string,
+    color: string,
+    halo: string,
+    viewport: Viewport,
+  ): void {
+    const labelScale = at.scale * viewport.visualScale;
+    if (labelScale <= LABEL_TEXT_SCALE) {
+      return;
+    }
+
     const ctx = this.ctx;
-    ctx.font = LABEL_FONT;
+    const fontSize = LABEL_FONT_SIZE * labelScale;
+    const paddingX = LABEL_PADDING_X * labelScale;
+    const paddingY = LABEL_PADDING_Y * labelScale;
+    ctx.font = `500 ${fontSize}px ${LABEL_FONT_FAMILY}`;
     const width = ctx.measureText(text).width;
-    const boxWidth = width + LABEL_PADDING_X * 2;
-    const boxHeight = 13 + LABEL_PADDING_Y * 2;
+    const boxWidth = width + paddingX * 2;
+    const boxHeight = fontSize + paddingY * 2;
     const left = at.x - boxWidth / 2;
     const top = at.y - boxHeight / 2;
 
     ctx.globalAlpha = 0.92;
     ctx.fillStyle = halo;
-    roundedRect(ctx, left, top, boxWidth, boxHeight, LABEL_RADIUS);
+    roundedRect(ctx, left, top, boxWidth, boxHeight, LABEL_RADIUS * labelScale);
     ctx.fill();
 
     ctx.globalAlpha = 1;
     ctx.fillStyle = color;
-    ctx.fillText(text, at.x, at.y + 0.5);
+    ctx.fillText(text, at.x, at.y + 0.5 * labelScale);
   }
 
   private drawHead(points: readonly GeodesicSample[], endpoint: 'start' | 'end'): void {

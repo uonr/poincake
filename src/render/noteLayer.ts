@@ -6,6 +6,8 @@ import { parseExternalLink } from '../model/noteLink';
 import { projectDiskPoint, type Viewport } from './viewport';
 
 const SCALE_TEXT = 0.26;
+const BASE_TEXT_FONT_SIZE = 16;
+const TEXT_FONT_SCALE_STEP = 1 / 32;
 const DOT_MERGE_CELL = 8;
 const DOT_OPACITY = 0.72;
 const EDGE_MARKER_OPACITY = 0.58;
@@ -105,7 +107,17 @@ export class NoteLayer {
         if (scale > SCALE_TEXT) {
           element.classList.remove('as-dot', 'as-pill-h', 'as-pill-v');
           element.dataset.noteRender = 'text';
-          element.style.transform = `translate(${projected.x}px, ${projected.y}px) translate(-50%, -50%) scale(${scale})`;
+          if (note.content.kind === 'plain-text') {
+            const fontScale = quantizedTextScale(scale);
+            const fontSize = `${(BASE_TEXT_FONT_SIZE * fontScale).toFixed(3)}px`;
+            if (element.style.fontSize !== fontSize) {
+              element.style.fontSize = fontSize;
+            }
+            element.style.transform = `translate(${projected.x}px, ${projected.y}px) translate(-50%, -50%) scale(${scale / fontScale})`;
+          } else {
+            element.style.fontSize = '';
+            element.style.transform = `translate(${projected.x}px, ${projected.y}px) translate(-50%, -50%) scale(${scale})`;
+          }
           element.style.opacity = String(Math.min(1, hyperbolicScale * 3));
         } else {
           const dotCell = mergedDotCell(projected.x, projected.y);
@@ -118,6 +130,7 @@ export class NoteLayer {
           element.classList.add('as-dot');
           element.classList.remove('as-pill-h', 'as-pill-v');
           element.dataset.noteRender = 'dot';
+          element.style.fontSize = '';
           element.style.transform = `translate(${projected.x}px, ${projected.y}px) translate(-50%, -50%)`;
           element.style.opacity = String(DOT_OPACITY);
         }
@@ -166,6 +179,7 @@ export class NoteLayer {
 
     element.classList.remove('as-dot');
     element.dataset.noteRender = 'edge';
+    element.style.fontSize = '';
     if (ty < tx) {
       element.classList.add('as-pill-h');
       element.classList.remove('as-pill-v');
@@ -196,6 +210,9 @@ const clampForProjection = (point: DiskPoint): DiskPoint => {
 
 const mergedDotCell = (x: number, y: number): string =>
   `${Math.round(x / DOT_MERGE_CELL)},${Math.round(y / DOT_MERGE_CELL)}`;
+
+const quantizedTextScale = (scale: number): number =>
+  Math.max(TEXT_FONT_SCALE_STEP, Math.round(scale / TEXT_FONT_SCALE_STEP) * TEXT_FONT_SCALE_STEP);
 
 const renderNoteContent = (
   element: HTMLDivElement,

@@ -7,6 +7,7 @@ import { abs2 } from '../geometry/complex';
 import { clampDisk, type DiskPoint } from '../geometry/disk';
 import {
   applyTransform,
+  composeTransforms,
   type DiskTransform,
   identityTransform,
   invertTransform,
@@ -138,6 +139,8 @@ export class HyperbolicCanvasController {
   private pointerMode: PointerMode = 'idle';
   private gestureButton: GestureButton | null = null;
   private dragStartPoint: DiskPoint | null = null;
+  private dragStartDisk: DiskPoint | null = null;
+  private dragStartView: DiskTransform | null = null;
   private downPosition: DiskPoint | null = null;
   private didMove = false;
   private dragNoteId: string | null = null;
@@ -460,6 +463,8 @@ export class HyperbolicCanvasController {
     this.pointerMode = 'idle';
     this.gestureButton = null;
     this.dragStartPoint = null;
+    this.dragStartDisk = null;
+    this.dragStartView = null;
     this.downPosition = null;
     this.didMove = false;
     this.dragNoteId = null;
@@ -653,6 +658,8 @@ export class HyperbolicCanvasController {
     this.gestureButton = gestureButton;
     const z = clampDisk(screenToDisk(event.clientX, event.clientY, viewport));
     this.dragStartPoint = applyTransform(invertTransform(this.view), z);
+    this.dragStartDisk = z;
+    this.dragStartView = this.view;
 
     if (gestureButton === 'primary' && noteId) {
       this.pointerMode = 'pending-item';
@@ -833,13 +840,16 @@ export class HyperbolicCanvasController {
   }
 
   private panToPointer(event: PointerEvent): void {
-    if (!this.dragStartPoint) {
+    if (!this.dragStartDisk || !this.dragStartView) {
       return;
     }
 
     const viewport = this.viewport();
     const z = clampDisk(screenToDisk(event.clientX, event.clientY, viewport));
-    this.view = transformFromPointPair(this.dragStartPoint, z);
+    this.view = composeTransforms(
+      transformFromPointPair(this.dragStartDisk, z),
+      this.dragStartView,
+    );
     this.reanchorIfNeeded();
   }
 
@@ -857,6 +867,10 @@ export class HyperbolicCanvasController {
     });
     const [dragStartPoint = null] = transientPoints;
     this.dragStartPoint = dragStartPoint;
+    if (this.dragStartDisk && this.dragStartView && dragStartPoint) {
+      this.dragStartDisk = dragStartPoint;
+      this.dragStartView = identityTransform;
+    }
     this.view = identityTransform;
     this.transformWorldPointCache(reanchorTransform);
     this.transformNavigationHistory(reanchorTransform);
@@ -933,6 +947,8 @@ export class HyperbolicCanvasController {
   private resetDragState(): void {
     this.gestureButton = null;
     this.dragStartPoint = null;
+    this.dragStartDisk = null;
+    this.dragStartView = null;
     this.dragNoteId = null;
     this.draggingNoteId = null;
     this.dragMoveBefore = null;

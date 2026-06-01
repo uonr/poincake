@@ -232,8 +232,8 @@ body {
 }
 
 .item[data-note-selected="true"]:not([data-note-link="external"]):not(.as-dot):not(.as-pill-h):not(
-    .as-pill-v
-  ) {
+  .as-pill-v
+) {
   text-decoration: none;
 }
 

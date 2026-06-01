@@ -360,10 +360,7 @@ export class HyperbolicCanvasController {
   }
 
   undo(): void {
-    if (this.editingNoteId) {
-      this.cancelEditing();
-    }
-
+    this.dismissFloatingUi();
     if (!this.history.undo(this.world)) {
       return;
     }
@@ -372,10 +369,7 @@ export class HyperbolicCanvasController {
   }
 
   redo(): void {
-    if (this.editingNoteId) {
-      this.cancelEditing();
-    }
-
+    this.dismissFloatingUi();
     if (!this.history.redo(this.world)) {
       return;
     }
@@ -392,6 +386,23 @@ export class HyperbolicCanvasController {
     this.clearArrowSelection();
     this.interactionMode = mode;
     this.options.stage.classList.remove('near-snap');
+  }
+
+  private dismissFloatingUi(): void {
+    if (this.editingNoteId) {
+      this.cancelEditing();
+    }
+
+    this.cancelArrowGesture();
+    this.clearArrowSelection();
+    this.selectedNoteId = null;
+    this.hoveredNoteId = null;
+    this.hoveredArrowId = null;
+    this.options.onSelectedImageChange?.(null);
+    this.emitSelection();
+    this.emitCoordinateTarget();
+    this.emitCoordinateNotePreview();
+    this.requestRender();
   }
 
   setZoom(zoom: number): void {
@@ -428,6 +439,7 @@ export class HyperbolicCanvasController {
       return;
     }
 
+    this.dismissFloatingUi();
     this.navigationForwardStack.push(this.currentViewCenter());
     this.emitNavigationHistoryState();
     this.flyTo(target);
@@ -440,6 +452,7 @@ export class HyperbolicCanvasController {
       return;
     }
 
+    this.dismissFloatingUi();
     this.navigationBackStack.push(this.currentViewCenter());
     this.emitNavigationHistoryState();
     this.flyTo(target);
